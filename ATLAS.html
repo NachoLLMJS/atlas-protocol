@@ -780,14 +780,23 @@ Respond with a JSON object ONLY, no markdown code blocks, just raw JSON:
 }
 
 ## Rules:
-- ONLY set action when you have ALL required data. The UI shows a confirm button automatically.
+- **CRITICAL**: Set the action field AS SOON AS you have the required data. Do NOT keep chatting or asking for more confirmation. The UI will show a confirm button automatically — you do NOT need to ask the user "are you sure?" or "shall I proceed?".
+  - For buy: need ticker + amount/qty → set action="buy" immediately
+  - For sell: need ticker + qty → set action="sell" immediately
+  - For send: need toAddress + sendAmount + sendToken → set action="send" immediately
+  - For create_index: need indexName + indexStocks (2-5) → set action="create_index" immediately
+- Examples of when to set action:
+  - User: "buy 1 ATLAS" → action="buy", data={ticker:"ATLAS", qty:1} IMMEDIATELY
+  - User: "sell ATLAS" then "1" → action="sell", data={ticker:"ATLAS", qty:1} IMMEDIATELY
+  - User: "compra 1 atlas" → action="buy", data={ticker:"ATLAS", qty:1} IMMEDIATELY
+  - User: "vendeme 1 atlas" → action="sell", data={ticker:"ATLAS", qty:1} IMMEDIATELY
+- For buy/sell INDEX tokens: use the ticker WITHOUT the $ prefix (e.g. "ATLAS" not "$ATLAS"). The system handles the prefix.
 - For create_index: ONLY use available stocks (${LIVE_TICKERS.join(', ')}). Need name + 2-5 stocks. Ask for a ticker symbol too (e.g. TECH, AILD). Guide step by step if info is missing.
 - If user asks for unavailable stocks, explain they're not on testnet yet and suggest alternatives from the 5 available.
-- Multi-turn: remember context. "buy TSLA" then "500 dollars" = action="buy" with full data.
+- Multi-turn: remember context across messages. "buy ATLAS" then "1" = action="buy" with ticker="ATLAS" and qty=1.
 - Be concise, terminal-style. No long paragraphs.
 - You CAN and SHOULD answer general questions about anything (politics, news, recipes, crypto, tutorials, etc). You have real web search. When WEB SEARCH RESULTS are provided, use the information AND include the URLs/links from them. NEVER say "I can't browse the internet" because you CAN via Tavily search.
-- Respond in the same language the user is using (Spanish if they write Spanish, English if English, etc.)
-- When the user wants to buy or sell an INDEX (not a stock), use the index ticker from the deployed indices list above. For sell, set action="sell" with data.ticker set to the INDEX ticker (e.g. "ATLAS") and data.qty as the amount.`;
+- Respond in the same language the user is using (Spanish if they write Spanish, English if English, etc.)`;
 }
 
 // ─── TAVILY SEARCH ───
@@ -871,7 +880,10 @@ function buildConfirmation(parsed) {
   if (action === 'buy' && data?.ticker && (data?.amount || data?.qty)) {
     const ticker = data.ticker.toUpperCase().replace(/^\$/, '');
     const stock = STOCKS.find(s => s.ticker === ticker);
-    const idx = DEPLOYED_INDICES.find(i => i.symbol === '$' + ticker || i.symbol === ticker || i.name.toUpperCase().includes(ticker));
+    const idx = DEPLOYED_INDICES.find(i => {
+      const sym = i.symbol.replace(/^\$/, '').toUpperCase();
+      return sym === ticker || i.name.toUpperCase() === ticker || i.name.toUpperCase().includes(ticker);
+    });
     if (idx) {
       const qty = data.qty || data.amount || 1;
       return {
@@ -900,7 +912,10 @@ function buildConfirmation(parsed) {
   if (action === 'sell' && data?.ticker && data?.qty) {
     const ticker = data.ticker.toUpperCase().replace(/^\$/, '');
     const stock = STOCKS.find(s => s.ticker === ticker);
-    const idx = DEPLOYED_INDICES.find(i => i.symbol === '$' + ticker || i.symbol === ticker || i.name.toUpperCase().includes(ticker));
+    const idx = DEPLOYED_INDICES.find(i => {
+      const sym = i.symbol.replace(/^\$/, '').toUpperCase();
+      return sym === ticker || i.name.toUpperCase() === ticker || i.name.toUpperCase().includes(ticker);
+    });
     if (idx) {
       return {
         action: 'sell_index', data: { ...data, index: idx },
@@ -1489,6 +1504,16 @@ function TerminalView({ wallet, balances, refreshBalances }) {
   const handleConfirm = async () => {
     if (!pendingConfirm) return;
     const { action: act, data: d } = pendingConfirm;
+
+    // Check wallet connection for any on-chain action
+    if (!wallet && (act === 'buy_index' || act === 'sell_index' || act === 'buy' || act === 'sell' || act === 'send' || act === 'create_index')) {
+      setPendingConfirm(null);
+      setMessages(prev => {
+        const without = prev.filter(m => m.type !== 'confirm');
+        return [...without, { type:'error', text: 'Wallet not connected. Please connect your wallet using the sidebar button first, then try again.' }, { type:'spacer' }];
+      });
+      return;
+    }
 
     // Real on-chain buy index via AtlasVault
     if (act === 'buy_index' && wallet && d?.index) {

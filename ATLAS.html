@@ -10,6 +10,7 @@
 <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js" crossorigin></script>
 <script src="config.js"></script>
 
 <style>
@@ -544,6 +545,85 @@ const INDICES = [
   { id:'IDX-004', name:'Full Market', ticker:'$FULL', stocks:['TSLA','AMZN','NFLX','AMD','PLTR'], weights:[20,20,20,20,20], tvl:'$98K', perf:3.1, fee:0.4, status:'new' },
 ];
 
+// ─── WALLET & CHAIN ───
+const ERC20_ABI = ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)', 'function transfer(address to, uint256 amount) returns (bool)', 'function symbol() view returns (string)'];
+
+const RH_NETWORK = {
+  chainId: typeof RH_CHAIN_ID_HEX !== 'undefined' ? RH_CHAIN_ID_HEX : '0xb626',
+  chainName: 'Robinhood Chain Testnet',
+  rpcUrls: [typeof RH_RPC !== 'undefined' ? RH_RPC : 'https://rpc.testnet.chain.robinhood.com'],
+  nativeCurrency: { name: 'RBH', symbol: 'RBH', decimals: 18 },
+  blockExplorerUrls: ['https://explorer.testnet.chain.robinhood.com'],
+};
+
+async function connectWallet() {
+  if (!window.ethereum) { alert('Please install MetaMask to connect.'); return null; }
+  try {
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    // Switch to Robinhood Chain
+    try {
+      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: RH_NETWORK.chainId }] });
+    } catch (switchErr) {
+      if (switchErr.code === 4902) {
+        await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [RH_NETWORK] });
+      } else { throw switchErr; }
+    }
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const address = await signer.getAddress();
+    return { provider, signer, address };
+  } catch (err) { console.error('Wallet connection failed:', err); return null; }
+}
+
+async function fetchBalances(providerOrRpc, address) {
+  const provider = typeof providerOrRpc === 'string'
+    ? new ethers.JsonRpcProvider(providerOrRpc)
+    : providerOrRpc;
+  const liveStocks = STOCKS.filter(s => s.live && s.token);
+  const results = {};
+  // Native RBH balance
+  const nativeBal = await provider.getBalance(address);
+  results['RBH'] = parseFloat(ethers.formatEther(nativeBal));
+  // ERC-20 balances
+  await Promise.all(liveStocks.map(async (s) => {
+    try {
+      const c = new ethers.Contract(s.token, ERC20_ABI, provider);
+      const bal = await c.balanceOf(address);
+      const dec = await c.decimals();
+      results[s.ticker] = parseFloat(ethers.formatUnits(bal, dec));
+    } catch { results[s.ticker] = 0; }
+  }));
+  return results;
+}
+
+function useWallet() {
+  const [wallet, setWallet] = useState(null);
+  const [balances, setBalances] = useState({});
+  const [loading, setLoading] = useState(false);
+
+  const connect = async () => {
+    setLoading(true);
+    const w = await connectWallet();
+    if (w) {
+      setWallet(w);
+      const bals = await fetchBalances(w.provider, w.address);
+      setBalances(bals);
+      // Listen for account/chain changes
+      window.ethereum.on('accountsChanged', () => window.location.reload());
+      window.ethereum.on('chainChanged', () => window.location.reload());
+    }
+    setLoading(false);
+  };
+
+  const refresh = async () => {
+    if (!wallet) return;
+    const bals = await fetchBalances(wallet.provider, wallet.address);
+    setBalances(bals);
+  };
+
+  return { wallet, balances, loading, connect, refresh };
+}
+
 // ─── AI AGENT CONFIG ───
 // Keys loaded from config.js (gitignored)
 let tavilyKeyIdx = 0;
@@ -744,6 +824,7 @@ function buildConfirmation(parsed) {
 
   if (action === 'send' && data?.toAddress && data?.sendAmount && data?.sendToken) {
     return {
+      action: 'send', data,
       preview: [
         { type:'agent', text: parsed.reply },
         { type:'agent', text: `Send ${data.sendAmount} ${data.sendToken} to ${data.toAddress.slice(0,6)}...${data.toAddress.slice(-4)}` },
@@ -761,23 +842,30 @@ function buildConfirmation(parsed) {
 }
 
 // ─── EXECUTE NON-CONFIRM ACTIONS ───
-function executeAction(parsed) {
+function executeAction(parsed, balances) {
   const { action, data } = parsed;
   const results = [];
 
   if (action === 'portfolio') {
-    results.push({ type:'agent', text: 'Loading your portfolio...' });
-    results.push({ type:'agent', text: '\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510' });
-    results.push({ type:'agent', text: '\u2502 YOUR PORTFOLIO                      \u2502' });
-    results.push({ type:'agent', text: '\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524' });
-    results.push({ type:'agent', text: '\u2502 Total Value:  $12,847.20 USDC       \u2502' });
-    results.push({ type:'agent', text: '\u2502 24h Change:   +$342.10 (+2.7%)      \u2502' });
-    results.push({ type:'agent', text: '\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524' });
-    results.push({ type:'agent', text: '\u2502 TSLA    12.40   $2,322.94   +1.2%   \u2502' });
-    results.push({ type:'agent', text: '\u2502 $TECH    8.00   $2,017.36   +4.2%   \u2502' });
-    results.push({ type:'agent', text: '\u2502 NVDA     2.50   $2,231.00   +3.4%   \u2502' });
-    results.push({ type:'agent', text: '\u2502 AAPL    15.00   $2,976.30   +1.2%   \u2502' });
-    results.push({ type:'agent', text: '\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518' });
+    const liveStocks = STOCKS.filter(s => s.live);
+    if (balances && Object.keys(balances).length > 0) {
+      const holdings = liveStocks.filter(s => (balances[s.ticker] || 0) > 0);
+      const totalVal = holdings.reduce((s, st) => s + (balances[st.ticker] || 0) * st.price, 0);
+      results.push({ type:'agent', text: 'Your on-chain portfolio (Robinhood Chain Testnet):' });
+      results.push({ type:'agent', text: '\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510' });
+      results.push({ type:'agent', text: `\u2502 Total Value:  $${totalVal.toFixed(2).padEnd(20)}\u2502` });
+      results.push({ type:'agent', text: `\u2502 RBH (gas):    ${(balances.RBH || 0).toFixed(4).padEnd(20)}\u2502` });
+      results.push({ type:'agent', text: '\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524' });
+      holdings.forEach(s => {
+        const qty = (balances[s.ticker] || 0).toFixed(2);
+        const val = '$' + ((balances[s.ticker] || 0) * s.price).toFixed(2);
+        results.push({ type:'agent', text: `\u2502 ${s.ticker.padEnd(8)} ${qty.padStart(6)}   ${val.padStart(10)}   ${(s.change > 0 ? '+' : '') + s.change + '%'}`.padEnd(37) + '\u2502' });
+      });
+      if (holdings.length === 0) results.push({ type:'agent', text: '\u2502 No stock holdings found.             \u2502' });
+      results.push({ type:'agent', text: '\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518' });
+    } else {
+      results.push({ type:'agent', text: 'Connect your wallet to view your portfolio. Click "Connect Wallet" in the sidebar.' });
+    }
     return results;
   }
 
@@ -798,15 +886,25 @@ function executeAction(parsed) {
 
 // ─── VIEWS ───
 
-function OverviewView({ setView }) {
+function OverviewView({ setView, wallet, balances, connectW, walletLoading, refreshBalances }) {
   const liveStocks = STOCKS.filter(s => s.live);
   const topIndex = INDICES[0];
   const statIcon = (d) => React.createElement('svg',{viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},React.createElement('path',{d}));
+  const connected = !!wallet;
+  const portfolioValue = connected ? liveStocks.reduce((sum, s) => sum + (balances[s.ticker] || 0) * s.price, 0) : 0;
+  const holdings = connected ? liveStocks.filter(s => (balances[s.ticker] || 0) > 0).map(s => ({
+    asset: s.ticker, qty: (balances[s.ticker] || 0).toFixed(2),
+    value: '$' + ((balances[s.ticker] || 0) * s.price).toFixed(0),
+    pct: (s.change >= 0 ? '+' : '') + s.change + '%', up: s.change >= 0,
+  })) : [];
   return <>
     <div className="crumbs">
       <div className="path">Dashboard / <b>Overview</b></div>
       <div className="actions">
-        <button className="btn ghost">Connect Wallet</button>
+        {wallet
+          ? <button className="btn ghost" onClick={refreshBalances}>{wallet.address.slice(0,6)}...{wallet.address.slice(-4)}</button>
+          : <button className="btn ghost" onClick={connectW} disabled={walletLoading}>{walletLoading ? 'Connecting...' : 'Connect Wallet'}</button>
+        }
         <button className="btn" onClick={() => setView('terminal')}>Open Terminal</button>
         <button className="btn primary" onClick={() => setView('create')}>Create Index</button>
       </div>
@@ -814,11 +912,11 @@ function OverviewView({ setView }) {
 
     {/* ── Stats Row ── */}
     <div className="ov-stats">
-      <div className="ov-stat" style={{cursor:'pointer'}} onClick={() => setView('portfolio')}>
+      <div className="ov-stat" style={{cursor:'pointer'}} onClick={() => connected ? setView('portfolio') : connectW()}>
         <div className="ov-stat-icon">{statIcon('M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6')}</div>
-        <div className="ov-stat-val">12.8K<span className="unit">USDC</span></div>
+        <div className="ov-stat-val">{connected ? (portfolioValue >= 1000 ? (portfolioValue/1000).toFixed(1)+'K' : '$'+portfolioValue.toFixed(0)) : '--'}<span className="unit">{connected ? 'USD' : ''}</span></div>
         <div className="ov-stat-lbl">Portfolio Value</div>
-        <div className="ov-stat-foot"><span className="up">&#9650; +2.7%</span> today</div>
+        <div className="ov-stat-foot">{connected ? <span>{holdings.length} stocks held</span> : <span style={{color:'var(--blue)'}}>Connect wallet</span>}</div>
       </div>
       <div className="ov-stat" style={{cursor:'pointer'}} onClick={() => setView('indices')}>
         <div className="ov-stat-icon">{statIcon('M4 6h16M4 12h16M4 18h7')}</div>
@@ -890,17 +988,17 @@ function OverviewView({ setView }) {
             <span className="ov-link" onClick={() => setView('portfolio')}>Open &#8599;</span>
           </div>
           <div className="ov-panel-body">
-            {[
-              { asset:'TSLA', qty:'12.40', value:'$2,322', pct:'+1.2%', up:true },
-              { asset:'$TPCK', qty:'8.00', value:'$2,017', pct:'+4.2%', up:true },
-              { asset:'AMZN', qty:'5.00', value:'$958', pct:'+2.1%', up:true },
-              { asset:'AMD', qty:'10.00', value:'$1,624', pct:'+2.9%', up:true },
-            ].map((h, i) => <div key={i} className="ov-row">
-              <span style={{fontFamily:'var(--display)', fontWeight:600, letterSpacing:'.08em', width:55, fontSize:13}}>{h.asset}</span>
-              <span style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--ink-soft)', flex:1}}>{h.qty}</span>
-              <span style={{fontFamily:'var(--display)', fontWeight:600, fontSize:13}}>{h.value}</span>
-              <span style={{fontFamily:'var(--mono)', fontSize:11, marginLeft:10, color: h.up ? 'var(--green)' : 'var(--red)'}}>{h.pct}</span>
-            </div>)}
+            {connected && holdings.length > 0
+              ? holdings.map((h, i) => <div key={i} className="ov-row">
+                  <span style={{fontFamily:'var(--display)', fontWeight:600, letterSpacing:'.08em', width:55, fontSize:13}}>{h.asset}</span>
+                  <span style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--ink-soft)', flex:1}}>{h.qty}</span>
+                  <span style={{fontFamily:'var(--display)', fontWeight:600, fontSize:13}}>{h.value}</span>
+                  <span style={{fontFamily:'var(--mono)', fontSize:11, marginLeft:10, color: h.up ? 'var(--green)' : 'var(--red)'}}>{h.pct}</span>
+                </div>)
+              : <div className="ov-row" style={{justifyContent:'center', color:'var(--ink-mute)', fontFamily:'var(--mono)', fontSize:11, cursor:'pointer'}} onClick={connectW}>
+                  {connected ? 'No holdings yet' : 'Connect wallet to view'}
+                </div>
+            }
           </div>
         </div>
 
@@ -1023,10 +1121,12 @@ function StocksView() {
   </>;
 }
 
-function TerminalView() {
+function TerminalView({ wallet, balances, refreshBalances }) {
+  const walletStatus = wallet ? `Wallet: ${wallet.address.slice(0,6)}...${wallet.address.slice(-4)}` : 'Wallet: not connected (connect via sidebar)';
   const [messages, setMessages] = useState([
     { type:'system', text:'Atlas Terminal \u00b7 v0.1.0 \u00b7 Robinhood Chain Testnet' },
     { type:'system', text:'AI Agent connected \u2014 powered by GPT-4o' },
+    { type:'system', text: walletStatus },
     { type:'spacer' },
     { type:'agent', text:'Welcome to Atlas. I can help you buy or sell tokenized stocks, create custom index funds, send tokens, or answer any questions about the protocol. What would you like to do?' },
   ]);
@@ -1087,7 +1187,7 @@ function TerminalView() {
         });
       } else {
         // No confirmation needed, show directly
-        const resultMsgs = executeAction(parsed);
+        const resultMsgs = executeAction(parsed, balances);
         setMessages(prev => {
           const without = prev.filter(m => m.type !== 'thinking');
           return [...without, ...resultMsgs, { type:'spacer' }];
@@ -1103,8 +1203,41 @@ function TerminalView() {
     setIsThinking(false);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!pendingConfirm) return;
+    const { action: act, data: d } = pendingConfirm;
+
+    // Real on-chain send
+    if (act === 'send' && wallet && d?.toAddress && d?.sendAmount && d?.sendToken) {
+      const stock = STOCKS.find(s => s.ticker === d.sendToken.toUpperCase());
+      if (stock && stock.token) {
+        setPendingConfirm(null);
+        setMessages(prev => {
+          const without = prev.filter(m => m.type !== 'confirm');
+          return [...without, { type:'system', text: 'Sending transaction to Robinhood Chain...' }];
+        });
+        try {
+          const contract = new ethers.Contract(stock.token, ERC20_ABI, wallet.signer);
+          const decimals = await contract.decimals();
+          const amount = ethers.parseUnits(String(d.sendAmount), decimals);
+          const tx = await contract.transfer(d.toAddress, amount);
+          setMessages(prev => [...prev, { type:'system', text: `Tx submitted: ${tx.hash.slice(0,14)}...` }]);
+          await tx.wait();
+          if (refreshBalances) refreshBalances();
+          const msgs = [{ type:'success', text: `\u2713 Transfer confirmed on-chain! Tx: ${tx.hash.slice(0,14)}...` }];
+          setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+          setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+          return;
+        } catch (err) {
+          const msgs = [{ type:'error', text: `Transaction failed: ${err.reason || err.message || 'Unknown error'}` }];
+          setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+          setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+          return;
+        }
+      }
+    }
+
+    // Fallback: non-chain confirmations
     const msgs = pendingConfirm.onConfirm;
     setPendingConfirm(null);
     setChatHistory(prev => [...prev, { role: 'user', content: 'Confirmed.' }, { role: 'assistant', content: msgs.map(m => m.text).join(' ') }]);
@@ -1174,48 +1307,55 @@ function TerminalView() {
   </>;
 }
 
-function PortfolioView() {
+function PortfolioView({ wallet, balances, connectW, walletLoading }) {
+  const connected = !!wallet;
+  const liveStocks = STOCKS.filter(s => s.live);
+  const holdings = connected ? liveStocks.filter(s => (balances[s.ticker] || 0) > 0).map(s => ({
+    asset: s.ticker, type: 'Stock', qty: (balances[s.ticker] || 0).toFixed(4),
+    value: ((balances[s.ticker] || 0) * s.price).toFixed(2),
+    change: s.change, up: s.change >= 0,
+  })) : [];
+  const totalValue = holdings.reduce((s, h) => s + parseFloat(h.value), 0);
   return <>
     <div className="crumbs"><div className="path">Dashboard / <b>Portfolio</b></div></div>
     <div className="sec-title" style={{marginTop:18}}>
       <h2>Your Portfolio</h2>
       <span className="ornament">&#10022; &#10022; &#10022;</span>
     </div>
-    <div className="portfolio-header">
-      <div className="port-card">
-        <div className="label">Total Value</div>
-        <div className="big">$12,847<span className="unit">USDC</span></div>
-        <div className="delta" style={{color:'var(--green)'}}>&#9650; +$342.10 (+2.7%) today</div>
+    {!connected ? <div style={{textAlign:'center', padding:'60px 20px'}}>
+      <div style={{fontFamily:'var(--display)', fontSize:28, fontWeight:600, marginBottom:16}}>Connect Your Wallet</div>
+      <p style={{fontFamily:'var(--sans)', color:'var(--ink-soft)', marginBottom:24}}>Connect MetaMask to view your real holdings on Robinhood Chain Testnet</p>
+      <button className="btn primary" onClick={connectW} disabled={walletLoading}>{walletLoading ? 'Connecting...' : 'Connect Wallet'}</button>
+    </div> : <>
+      <div className="portfolio-header">
+        <div className="port-card">
+          <div className="label">Total Value</div>
+          <div className="big">${totalValue >= 1000 ? (totalValue/1000).toFixed(1)+'K' : totalValue.toFixed(2)}<span className="unit">USD</span></div>
+          <div className="delta" style={{color:'var(--green)'}}>{holdings.length} positions</div>
+        </div>
+        <div className="port-card">
+          <div className="label">Wallet</div>
+          <div className="big" style={{fontSize:18}}>{wallet.address.slice(0,10)}...{wallet.address.slice(-8)}</div>
+          <div className="delta" style={{color:'var(--ink-soft)'}}>{(balances.RBH || 0).toFixed(4)} RBH (gas)</div>
+        </div>
       </div>
-      <div className="port-card">
-        <div className="label">Fees Earned (Creator)</div>
-        <div className="big">$1,926<span className="unit">USDC</span></div>
-        <div className="delta" style={{color:'var(--green)'}}>&#9650; +$124.50 this week</div>
+      <div className="sec-title" style={{marginTop:36}}>
+        <span className="kicker">Holdings</span>
+        <h2>Positions</h2>
       </div>
-    </div>
-    <div className="sec-title" style={{marginTop:36}}>
-      <span className="kicker">Holdings</span>
-      <h2>Positions</h2>
-    </div>
-    <table className="holdings-table">
-      <thead><tr><th>Asset</th><th>Type</th><th>Qty</th><th>Value</th><th>24h</th></tr></thead>
-      <tbody>
-        {[
-          { asset:'TSLA', type:'Stock', qty:'12.40', value:'$2,322.94', change:'+1.2%', up:true },
-          { asset:'$TECH', type:'Index', qty:'8.00', value:'$2,017.36', change:'+4.2%', up:true },
-          { asset:'NVDA', type:'Stock', qty:'2.50', value:'$2,231.00', change:'+3.4%', up:true },
-          { asset:'AAPL', type:'Stock', qty:'15.00', value:'$2,976.30', change:'+1.2%', up:true },
-          { asset:'$AILD', type:'Index', qty:'6.00', value:'$1,512.00', change:'+5.4%', up:true },
-          { asset:'MSFT', type:'Stock', qty:'4.20', value:'$1,857.16', change:'+0.9%', up:true },
-        ].map((h, i) => <tr key={i}>
-          <td style={{fontFamily:'var(--display)', fontWeight:600, letterSpacing:'.08em'}}>{h.asset}</td>
-          <td><span className={`pill ${h.type === 'Index' ? 'hot' : 'live'}`}>{h.type}</span></td>
-          <td style={{fontFamily:'var(--mono)', fontFeatureSettings:'"tnum"'}}>{h.qty}</td>
-          <td style={{fontFamily:'var(--display)', fontWeight:600}}>{h.value}</td>
-          <td style={{fontFamily:'var(--mono)', color: h.up ? 'var(--green)' : 'var(--red)'}}>{h.change}</td>
-        </tr>)}
-      </tbody>
-    </table>
+      <table className="holdings-table">
+        <thead><tr><th>Asset</th><th>Type</th><th>Qty</th><th>Value</th><th>24h</th></tr></thead>
+        <tbody>
+          {holdings.length > 0 ? holdings.map((h, i) => <tr key={i}>
+            <td style={{fontFamily:'var(--display)', fontWeight:600, letterSpacing:'.08em'}}>{h.asset}</td>
+            <td><span className="pill live">{h.type}</span></td>
+            <td style={{fontFamily:'var(--mono)', fontFeatureSettings:'"tnum"'}}>{h.qty}</td>
+            <td style={{fontFamily:'var(--display)', fontWeight:600}}>${h.value}</td>
+            <td style={{fontFamily:'var(--mono)', color: h.up ? 'var(--green)' : 'var(--red)'}}>{h.up ? '+' : ''}{h.change}%</td>
+          </tr>) : <tr><td colSpan="5" style={{textAlign:'center', color:'var(--ink-mute)', padding:30}}>No holdings found. Use the faucet or terminal to get stocks.</td></tr>}
+        </tbody>
+      </table>
+    </>}
   </>;
 }
 
@@ -1329,6 +1469,7 @@ function App() {
   const validViews = ['overview','indices','stocks','terminal','portfolio','treasury','create'];
   const hashView = window.location.hash.replace('#','');
   const [view, setView] = useState(validViews.includes(hashView) ? hashView : 'overview');
+  const { wallet, balances, loading: walletLoading, connect: connectW, refresh: refreshBalances } = useWallet();
 
   useEffect(() => {
     function onHash(){ const v = window.location.hash.replace('#',''); if(validViews.includes(v)) setView(v); }
@@ -1373,7 +1514,10 @@ function App() {
       <div className="agent-status">
         <div className="agent-row"><span className="agent-dot"/> Agent &middot; Online</div>
         <div className="agent-mode">Mode &middot; {view === 'terminal' ? 'Terminal Active' : 'Ready'}</div>
-        <div className="agent-mode" style={{color:'var(--ink-mute)'}}>Session XIV &middot; 14:22 UTC</div>
+        {wallet
+          ? <div className="agent-mode" style={{color:'var(--green)'}}>{wallet.address.slice(0,6)}...{wallet.address.slice(-4)} &middot; {(balances.RBH || 0).toFixed(4)} RBH</div>
+          : <div className="agent-mode" style={{color:'var(--ink-mute)', cursor:'pointer', textDecoration:'underline'}} onClick={connectW}>{walletLoading ? 'Connecting...' : 'Connect Wallet'}</div>
+        }
       </div>
       <nav className="menu">
         {menuItems.map(g => <React.Fragment key={g.group}>
@@ -1386,20 +1530,20 @@ function App() {
         </React.Fragment>)}
       </nav>
       <div className="nav-footer">
-        <div><span className="k">Network</span> &nbsp;Robinhood Chain</div>
+        <div><span className="k">Network</span> &nbsp;{wallet ? <span style={{color:'var(--green)'}}>Robinhood Chain</span> : 'Robinhood Chain'}</div>
         <div><span className="k">Protocol</span> &nbsp;ATLAS Index v1</div>
         <div><span className="k">Build</span> &nbsp;<b>v0.1.0 &middot; testnet</b></div>
       </div>
     </aside>
 
     <main>
-      {view === 'overview' && <OverviewView setView={setView}/>}
+      {view === 'overview' && <OverviewView setView={setView} wallet={wallet} balances={balances} connectW={connectW} walletLoading={walletLoading} refreshBalances={refreshBalances}/>}
       {view === 'indices' && <IndicesView setView={setView}/>}
       {view === 'stocks' && <StocksView/>}
-      {view === 'terminal' && <TerminalView/>}
-      {view === 'portfolio' && <PortfolioView/>}
+      {view === 'terminal' && <TerminalView wallet={wallet} balances={balances} refreshBalances={refreshBalances}/>}
+      {view === 'portfolio' && <PortfolioView wallet={wallet} balances={balances} connectW={connectW} walletLoading={walletLoading}/>}
       {view === 'treasury' && <TreasuryView/>}
-      {view === 'create' && <CreateIndexView setView={setView}/>}
+      {view === 'create' && <CreateIndexView setView={setView} wallet={wallet}/>}
     </main>
 
     {showRail && <RightRail setView={setView}/>}

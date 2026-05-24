@@ -727,11 +727,18 @@ let tavilyKeyIdx = 0;
 const SEARCH_PATTERN = /\?|what\s|how\s|when\s|who\s|why\s|where\s|is\s|are\s|was\s|were\s|will\s|can\s|do\s|does\s|did\s|price|worth|trending|news|current|latest|check|find|tell me|info|explain|market|today|announce|search|busca|mira|link|url|video|tutorial|youtube|recipe|receta|dame|give me|show me|look up|internet|web|online/i;
 
 const LIVE_TICKERS = STOCKS.filter(s => s.live).map(s => s.ticker);
-const ATLAS_SYSTEM_PROMPT = `You are ATLAS, an AI-powered trading terminal for the ATLAS protocol on Robinhood Chain (Arbitrum Orbit L2).
+function getSystemPrompt(userBalances) {
+  const stockList = STOCKS.filter(s => s.live).map(s => `- ${s.ticker} (${s.name}): $${s.price.toFixed(2)}, 24h: ${s.change > 0 ? '+' : ''}${s.change}%`).join('\n');
+  const unavailable = STOCKS.filter(s => !s.live).map(s => s.ticker).join(', ');
+  const indexList = DEPLOYED_INDICES.length > 0
+    ? DEPLOYED_INDICES.map(idx => `- ${idx.symbol} "${idx.name}": stocks=[${idx.stocks.join(', ')}], supply=${idx.totalSupply.toFixed(2)}, fee=${idx.feeBps/100}%, contract=${idx.address}`).join('\n')
+    : 'No indices deployed yet. Users can create them!';
+  const balanceInfo = userBalances ? Object.entries(userBalances).filter(([,v]) => v > 0).map(([k,v]) => `${k}: ${v.toFixed(4)}`).join(', ') : 'Not connected';
+  return `You are ATLAS, an AI-powered trading terminal for the ATLAS protocol on Robinhood Chain (Arbitrum Orbit L2).
 
 ## Your capabilities:
-1. **Buy index**: Help users buy index tokens via the AtlasVault (vault provides underlying stocks, user receives index tokens in 1 tx)
-2. **Sell index**: Help users sell index tokens back to the AtlasVault (burns tokens, stocks return to vault)
+1. **Buy index**: Help users buy index tokens via the AtlasVault (vault provides underlying stocks, user receives index tokens in 1 tx). User says "buy ATLAS" or "buy [index ticker]" with an amount.
+2. **Sell index**: Help users sell index tokens back to the AtlasVault (burns tokens, stocks return to vault). User says "sell ATLAS" or "sell [index ticker]".
 3. **Create index**: Help users create custom index funds (baskets of 2-5 stocks deployed as ERC-20 tokens on-chain). The creator earns a fee on every buy.
 4. **Send tokens**: Help users send stock tokens or index tokens to other wallet addresses
 5. **Portfolio**: Show the user's current holdings
@@ -743,14 +750,17 @@ The AtlasVault is a liquidity contract that holds stock tokens. When users buy a
 
 ## CRITICAL: Available stocks on Robinhood Chain Testnet
 ONLY these 5 stocks are live and available for trading/indexing:
-${STOCKS.filter(s => s.live).map(s => `- ${s.ticker} (${s.name}): $${s.price.toFixed(2)}, 24h: ${s.change > 0 ? '+' : ''}${s.change}%`).join('\n')}
+${stockList}
 
-Stocks NOT available (coming soon): ${STOCKS.filter(s => !s.live).map(s => s.ticker).join(', ')}
+Stocks NOT available (coming soon): ${unavailable}
 
 **IMPORTANT**: When a user tries to create an index or trade with stocks that are NOT in the 5 available (${LIVE_TICKERS.join(', ')}), you MUST tell them those stocks are not available yet on the testnet and suggest using only the 5 available ones. NEVER include unavailable stocks in indexStocks array.
 
 ## Deployed on-chain index funds:
-${DEPLOYED_INDICES.length > 0 ? DEPLOYED_INDICES.map(idx => `${idx.symbol} "${idx.name}": ${idx.stocks.join(', ')}`).join('\n') : 'No indices deployed yet. Users can create them!'}
+${indexList}
+
+## User's current balances:
+${balanceInfo}
 
 ## Response format:
 Respond with a JSON object ONLY, no markdown code blocks, just raw JSON:
@@ -776,7 +786,9 @@ Respond with a JSON object ONLY, no markdown code blocks, just raw JSON:
 - Multi-turn: remember context. "buy TSLA" then "500 dollars" = action="buy" with full data.
 - Be concise, terminal-style. No long paragraphs.
 - You CAN and SHOULD answer general questions about anything (politics, news, recipes, crypto, tutorials, etc). You have real web search. When WEB SEARCH RESULTS are provided, use the information AND include the URLs/links from them. NEVER say "I can't browse the internet" because you CAN via Tavily search.
-- Respond in the same language the user is using (Spanish if they write Spanish, English if English, etc.)`;
+- Respond in the same language the user is using (Spanish if they write Spanish, English if English, etc.)
+- When the user wants to buy or sell an INDEX (not a stock), use the index ticker from the deployed indices list above. For sell, set action="sell" with data.ticker set to the INDEX ticker (e.g. "ATLAS") and data.qty as the amount.`;
+}
 
 // ─── TAVILY SEARCH ───
 async function searchTavily(query) {
@@ -805,7 +817,7 @@ async function searchTavily(query) {
 }
 
 // ─── OPENAI CHAT ───
-async function callAtlasAI(history) {
+async function callAtlasAI(history, userBalances) {
   // Check if last user message needs web search
   const lastMsg = history.filter(m => m.role === 'user').pop();
   let searchContext = '';
@@ -815,7 +827,7 @@ async function callAtlasAI(history) {
   }
 
   const messages = [
-    { role: 'system', content: ATLAS_SYSTEM_PROMPT + searchContext },
+    { role: 'system', content: getSystemPrompt(userBalances) + searchContext },
     ...history.slice(-20),
   ];
 
@@ -1426,7 +1438,7 @@ function TerminalView({ wallet, balances, refreshBalances }) {
     setMessages(prev => [...prev, { type:'thinking', text:'Consulting the oracle...' }]);
 
     try {
-      const parsed = await callAtlasAI(newHistory);
+      const parsed = await callAtlasAI(newHistory, balances);
       const confirm = buildConfirmation(parsed);
 
       // Add assistant reply to chat history

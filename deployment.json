@@ -3,5 +3,14 @@
   "chainId": 46630,
   "deployer": "0x113Ee1c220096f08Ad4da2b50887745E644F5117",
   "IndexFactory": "0xfba93D3DE479Bcf6d4b1eFCeC317055F9253b269",
-  "deployedAt": "2026-05-24T15:36:16.893Z"
+  "deployedAt": "2026-05-24T15:36:16.893Z",
+  "AtlasVault": "0x3130865dE0D1594E38C5cC52596712F05d93a4d5",
+  "vaultDeployedAt": "2026-05-24T18:26:09.076Z",
+  "vaultSeeded": [
+    "TSLA: 2",
+    "AMZN: 2",
+    "NFLX: 2",
+    "AMD: 2",
+    "PLTR: 2"
+  ]
 }

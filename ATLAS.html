@@ -585,6 +585,19 @@ const INDEX_TOKEN_ABI = [...ERC20_ABI, 'function mint(uint256 amount)', 'functio
 
 const FACTORY_ABI = ['function createIndex(string name, string symbol, address[] stocks, uint256[] weights, uint256 feeBps) returns (address)', 'function totalIndices() view returns (uint256)', 'function allIndices(uint256) view returns (address)', 'function getCreatorIndices(address creator) view returns (address[])', 'event IndexCreated(address indexed indexToken, string name, string symbol, address indexed creator, address[] stocks, uint256[] weights, uint256 feeBps)'];
 
+// ─── ATLAS VAULT ───
+const VAULT_ADDRESS = '0x3130865dE0D1594E38C5cC52596712F05d93a4d5';
+const VAULT_ABI = [
+  'function deposit(address token, uint256 amount)',
+  'function withdraw(address token, uint256 amount)',
+  'function buyIndex(address indexToken, uint256 amount)',
+  'function sellIndex(address indexToken, uint256 amount)',
+  'function getVaultBalance(address token) view returns (uint256)',
+  'function getLPCount() view returns (uint256)',
+  'function lpTokenDeposits(address lp, address token) view returns (uint256)',
+  'function owner() view returns (address)',
+];
+
 // Track deployed index tokens (loaded from factory on-chain)
 let DEPLOYED_INDICES = [];
 
@@ -717,13 +730,16 @@ const LIVE_TICKERS = STOCKS.filter(s => s.live).map(s => s.ticker);
 const ATLAS_SYSTEM_PROMPT = `You are ATLAS, an AI-powered trading terminal for the ATLAS protocol on Robinhood Chain (Arbitrum Orbit L2).
 
 ## Your capabilities:
-1. **Buy stocks**: Help users buy tokenized stocks
-2. **Sell stocks**: Help users sell their tokenized stock holdings
-3. **Create index**: Help users create custom index funds (baskets of 2-5 stocks deployed as ERC-20 tokens on-chain)
-4. **Send tokens**: Help users send tokens to other wallet addresses
+1. **Buy index**: Help users buy index tokens via the AtlasVault (vault provides underlying stocks, user receives index tokens in 1 tx)
+2. **Sell index**: Help users sell index tokens back to the AtlasVault (burns tokens, stocks return to vault)
+3. **Create index**: Help users create custom index funds (baskets of 2-5 stocks deployed as ERC-20 tokens on-chain). The creator earns a fee on every buy.
+4. **Send tokens**: Help users send stock tokens or index tokens to other wallet addresses
 5. **Portfolio**: Show the user's current holdings
 6. **Price check**: Show current prices for stocks
 7. **General conversation + Web Search**: You have REAL web search capability via Tavily. When you receive "WEB SEARCH RESULTS" in the system message, those are REAL results from the internet. Use them to answer accurately. Include URLs/links from the results when the user asks for links. You can answer ANY topic: news, politics, recipes, tutorials, crypto, anything.
+
+## AtlasVault:
+The AtlasVault is a liquidity contract that holds stock tokens. When users buy an index, the vault provides the underlying stocks automatically. LPs (liquidity providers) deposit stocks into the vault and earn 50% of the index creator's fee. Users get testnet stocks from the faucet at https://faucet.testnet.chain.robinhood.com/
 
 ## CRITICAL: Available stocks on Robinhood Chain Testnet
 ONLY these 5 stocks are live and available for trading/indexing:
@@ -845,10 +861,10 @@ function buildConfirmation(parsed) {
     if (stock) {
       const qty = (data.amount / stock.price).toFixed(4);
       return {
+        action: 'buy', data: { ...data, qty, stock },
         preview: [
           { type:'agent', text: parsed.reply },
-          { type:'agent', text: `Buy ${qty} ${stock.ticker} at $${stock.price.toFixed(2)}` },
-          { type:'agent', text: `Total: $${parseFloat(data.amount).toFixed(2)} USDC` },
+          { type:'agent', text: `Buy ${qty} ${stock.ticker} at $${stock.price.toFixed(2)} via AtlasVault` },
         ],
         onConfirm: [
           { type:'success', text: `\u2713 Order filled. ${qty} ${stock.ticker} added to your portfolio.` },
@@ -865,13 +881,13 @@ function buildConfirmation(parsed) {
     if (stock) {
       const total = (data.qty * stock.price).toFixed(2);
       return {
+        action: 'sell', data: { ...data, stock },
         preview: [
           { type:'agent', text: parsed.reply },
-          { type:'agent', text: `Sell ${data.qty} ${stock.ticker} at $${stock.price.toFixed(2)}` },
-          { type:'agent', text: `Proceeds: $${total} USDC` },
+          { type:'agent', text: `Sell ${data.qty} ${stock.ticker} at $${stock.price.toFixed(2)} via AtlasVault` },
         ],
         onConfirm: [
-          { type:'success', text: `\u2713 Sale complete. $${total} USDC credited to wallet.` },
+          { type:'success', text: `\u2713 Sale complete. ${data.qty} ${stock.ticker} returned to vault.` },
         ],
         onCancel: [
           { type:'error', text: 'Sale cancelled.' },
@@ -1141,42 +1157,47 @@ function IndicesView({ setView, wallet, balances, refreshBalances }) {
   const [minting, setMinting] = useState(false);
   const [mintResult, setMintResult] = useState(null);
 
-  const handleMint = async (idx) => {
+  const handleBuy = async (idx) => {
     if (!wallet) { alert('Connect wallet first'); return; }
     setMinting(true); setMintResult(null);
     try {
       const amount = ethers.parseEther(mintAmount);
-      const indexContract = new ethers.Contract(idx.address, INDEX_TOKEN_ABI, wallet.signer);
-      // Approve each stock token first
-      for (let i = 0; i < idx.stockAddresses.length; i++) {
-        const stockToken = new ethers.Contract(idx.stockAddresses[i], ERC20_ABI, wallet.signer);
-        const dec = await stockToken.decimals();
-        let needed = (amount * BigInt(idx.weights[i])) / 10000n;
-        if (dec < 18) needed = needed / (10n ** BigInt(18 - Number(dec)));
-        const currentAllowance = await stockToken.allowance(wallet.address, idx.address);
-        if (currentAllowance < needed) {
-          const approveTx = await stockToken.approve(idx.address, needed);
-          await approveTx.wait();
-        }
-      }
-      const tx = await indexContract.mint(amount);
+      const vault = new ethers.Contract(VAULT_ADDRESS, VAULT_ABI, wallet.signer);
+      setMintResult({ ok: true, msg: 'Buying via AtlasVault... (1 tx)' });
+      const tx = await vault.buyIndex(idx.address, amount);
       await tx.wait();
       if (refreshBalances) refreshBalances();
-      setMintResult({ ok: true, msg: `Minted ${mintAmount} ${idx.symbol}!` });
-    } catch (err) { setMintResult({ ok: false, msg: err.reason || err.message }); }
+      setMintResult({ ok: true, msg: `Bought ${mintAmount} ${idx.symbol}! The vault provided the underlying stocks.` });
+    } catch (err) {
+      const msg = err.reason || err.message || 'Unknown error';
+      if (msg.includes('insufficient liquidity')) {
+        setMintResult({ ok: false, msg: 'Vault has insufficient stock liquidity. Try a smaller amount.' });
+      } else {
+        setMintResult({ ok: false, msg });
+      }
+    }
     setMinting(false);
   };
 
-  const handleBurn = async (idx) => {
+  const handleSell = async (idx) => {
     if (!wallet) { alert('Connect wallet first'); return; }
     setMinting(true); setMintResult(null);
     try {
       const amount = ethers.parseEther(mintAmount);
-      const indexContract = new ethers.Contract(idx.address, INDEX_TOKEN_ABI, wallet.signer);
-      const tx = await indexContract.burn(amount);
+      // Approve index tokens to vault
+      const indexContract = new ethers.Contract(idx.address, ERC20_ABI, wallet.signer);
+      const allowance = await indexContract.allowance(wallet.address, VAULT_ADDRESS);
+      if (allowance < amount) {
+        setMintResult({ ok: true, msg: 'Approving index tokens...' });
+        const approveTx = await indexContract.approve(VAULT_ADDRESS, amount);
+        await approveTx.wait();
+      }
+      setMintResult({ ok: true, msg: 'Selling via AtlasVault...' });
+      const vault = new ethers.Contract(VAULT_ADDRESS, VAULT_ABI, wallet.signer);
+      const tx = await vault.sellIndex(idx.address, amount);
       await tx.wait();
       if (refreshBalances) refreshBalances();
-      setMintResult({ ok: true, msg: `Burned ${mintAmount} ${idx.symbol}, stocks returned!` });
+      setMintResult({ ok: true, msg: `Sold ${mintAmount} ${idx.symbol}! Stocks returned to vault.` });
     } catch (err) { setMintResult({ ok: false, msg: err.reason || err.message }); }
     setMinting(false);
   };
@@ -1222,10 +1243,10 @@ function IndicesView({ setView, wallet, balances, refreshBalances }) {
                 <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8}}>
                   <label style={{fontFamily:'var(--mono)', fontSize:11}}>Amount:</label>
                   <input value={mintAmount} onChange={e => setMintAmount(e.target.value)} placeholder="1.0" style={{width:100, padding:'6px 10px', border:'1px solid var(--ink)', fontFamily:'var(--mono)', fontSize:13, background:'var(--paper)'}} />
-                  <button className="btn primary" style={{fontSize:11, padding:'6px 16px'}} onClick={(e) => { e.stopPropagation(); handleMint(idx); }} disabled={minting}>{minting ? 'Processing...' : 'Buy'}</button>
-                  <button className="btn" style={{fontSize:11, padding:'6px 16px'}} onClick={(e) => { e.stopPropagation(); handleBurn(idx); }} disabled={minting}>{minting ? 'Processing...' : 'Sell'}</button>
+                  <button className="btn primary" style={{fontSize:11, padding:'6px 16px'}} onClick={(e) => { e.stopPropagation(); handleBuy(idx); }} disabled={minting}>{minting ? 'Processing...' : 'Buy'}</button>
+                  <button className="btn" style={{fontSize:11, padding:'6px 16px'}} onClick={(e) => { e.stopPropagation(); handleSell(idx); }} disabled={minting}>{minting ? 'Processing...' : 'Sell'}</button>
                 </div>
-                <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-mute)'}}>Buy: deposit underlying stocks proportionally to receive index tokens. Sell: return index tokens to receive your stocks back.</div>
+                <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-mute)'}}>Buy: the Atlas Vault provides the underlying stocks and mints index tokens for you in 1 transaction. Sell: burn your index tokens, stocks return to the vault.</div>
                 {mintResult && <div style={{fontFamily:'var(--mono)', fontSize:11, marginTop:8, padding:'6px 10px', background: mintResult.ok ? 'rgba(0,180,0,.08)' : 'rgba(180,0,0,.08)', color: mintResult.ok ? 'var(--green)' : 'var(--red)'}}>{mintResult.msg}</div>}
               </div>
             </td></tr>}
@@ -1455,6 +1476,84 @@ function TerminalView({ wallet, balances, refreshBalances }) {
         return;
       } catch (err) {
         const msgs = [{ type:'error', text: `Deploy failed: ${err.reason || err.message}` }];
+        setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+        setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+        return;
+      }
+    }
+
+    // Real on-chain buy via AtlasVault
+    if (act === 'buy' && wallet && d?.stock?.token && d?.qty) {
+      setPendingConfirm(null);
+      setMessages(prev => {
+        const without = prev.filter(m => m.type !== 'confirm');
+        return [...without, { type:'system', text: 'Buying via AtlasVault on Robinhood Chain...' }];
+      });
+      try {
+        // Find index that contains this stock, or buy stock directly
+        // For now: transfer stock from vault to user (vault.buyIndex not applicable for single stocks)
+        // We do a direct ERC-20 transfer from the vault - but vault only does buyIndex/sellIndex
+        // So for single stock "buy" we explain this is for indices
+        const vault = new ethers.Contract(VAULT_ADDRESS, VAULT_ABI, wallet.signer);
+        // Check if there's a deployed index for this stock
+        const relevantIdx = DEPLOYED_INDICES.find(idx => idx.stocks.includes(d.stock.ticker));
+        if (relevantIdx) {
+          const amount = ethers.parseEther(String(d.qty));
+          const tx = await vault.buyIndex(relevantIdx.address, amount);
+          setMessages(prev => [...prev, { type:'system', text: `Tx submitted: ${tx.hash.slice(0,14)}...` }]);
+          await tx.wait();
+          if (refreshBalances) refreshBalances();
+          const msgs = [{ type:'success', text: `\u2713 Bought ${d.qty} ${relevantIdx.symbol} (includes ${d.stock.ticker}) via AtlasVault!` }];
+          setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+          setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+        } else {
+          const msgs = [{ type:'agent', text: `No index fund contains ${d.stock.ticker} yet. Create one first in the Indices section, then you can buy it via the vault.` }];
+          setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+          setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+        }
+        return;
+      } catch (err) {
+        const msgs = [{ type:'error', text: `Buy failed: ${err.reason || err.message}` }];
+        setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+        setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+        return;
+      }
+    }
+
+    // Real on-chain sell via AtlasVault
+    if (act === 'sell' && wallet && d?.stock?.token && d?.qty) {
+      setPendingConfirm(null);
+      setMessages(prev => {
+        const without = prev.filter(m => m.type !== 'confirm');
+        return [...without, { type:'system', text: 'Selling via AtlasVault on Robinhood Chain...' }];
+      });
+      try {
+        const relevantIdx = DEPLOYED_INDICES.find(idx => idx.stocks.includes(d.stock.ticker));
+        if (relevantIdx) {
+          const amount = ethers.parseEther(String(d.qty));
+          const indexContract = new ethers.Contract(relevantIdx.address, ERC20_ABI, wallet.signer);
+          const allowance = await indexContract.allowance(wallet.address, VAULT_ADDRESS);
+          if (allowance < amount) {
+            setMessages(prev => [...prev, { type:'system', text: 'Approving index tokens...' }]);
+            const approveTx = await indexContract.approve(VAULT_ADDRESS, amount);
+            await approveTx.wait();
+          }
+          const vault = new ethers.Contract(VAULT_ADDRESS, VAULT_ABI, wallet.signer);
+          const tx = await vault.sellIndex(relevantIdx.address, amount);
+          setMessages(prev => [...prev, { type:'system', text: `Tx submitted: ${tx.hash.slice(0,14)}...` }]);
+          await tx.wait();
+          if (refreshBalances) refreshBalances();
+          const msgs = [{ type:'success', text: `\u2713 Sold ${d.qty} ${relevantIdx.symbol}! Stocks returned to vault.` }];
+          setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+          setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+        } else {
+          const msgs = [{ type:'agent', text: `No index fund contains ${d.stock.ticker}. You can sell individual stocks via Send.` }];
+          setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+          setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+        }
+        return;
+      } catch (err) {
+        const msgs = [{ type:'error', text: `Sell failed: ${err.reason || err.message}` }];
         setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
         setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
         return;
@@ -1841,6 +1940,7 @@ function App() {
         <div><span className="k">Protocol</span> &nbsp;ATLAS Index v1</div>
         <div><span className="k">Prices</span> &nbsp;{pricesLoaded ? <span style={{color:'var(--green)'}}>Live</span> : 'Cached'}</div>
         <div><span className="k">Build</span> &nbsp;<b>v0.1.0 &middot; testnet</b></div>
+        <a href="https://faucet.testnet.chain.robinhood.com/" target="_blank" rel="noopener noreferrer" style={{display:'block', marginTop:10, padding:'6px 10px', border:'1px solid var(--green)', color:'var(--green)', textAlign:'center', fontFamily:'var(--mono)', fontSize:9, letterSpacing:'.14em', textTransform:'uppercase', textDecoration:'none'}}>Get Testnet Stocks</a>
       </div>
     </aside>
 

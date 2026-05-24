@@ -538,12 +538,7 @@ let STOCKS = [
   { ticker:'INTC', name:'Intel Corp.', price:31.20, change:-1.44, live:false },
 ];
 
-const INDICES = [
-  { id:'IDX-001', name:'Tech Pack', ticker:'$TPCK', stocks:['TSLA','AMZN','AMD','PLTR'], weights:[25,25,25,25], tvl:'$214K', perf:4.2, fee:0.3, status:'live' },
-  { id:'IDX-002', name:'Stream & Drive', ticker:'$STDR', stocks:['TSLA','NFLX','AMZN'], weights:[34,33,33], tvl:'$186K', perf:3.8, fee:0.5, status:'live' },
-  { id:'IDX-003', name:'AI Leaders', ticker:'$AILD', stocks:['AMD','PLTR','AMZN'], weights:[34,33,33], tvl:'$142K', perf:5.4, fee:0.3, status:'hot' },
-  { id:'IDX-004', name:'Full Market', ticker:'$FULL', stocks:['TSLA','AMZN','NFLX','AMD','PLTR'], weights:[20,20,20,20,20], tvl:'$98K', perf:3.1, fee:0.4, status:'new' },
-];
+// No mock indices - all indices come from on-chain DEPLOYED_INDICES via IndexFactory
 
 // ─── LIVE STOCK PRICES ───
 const PRICES_API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -738,8 +733,8 @@ Stocks NOT available (coming soon): ${STOCKS.filter(s => !s.live).map(s => s.tic
 
 **IMPORTANT**: When a user tries to create an index or trade with stocks that are NOT in the 5 available (${LIVE_TICKERS.join(', ')}), you MUST tell them those stocks are not available yet on the testnet and suggest using only the 5 available ones. NEVER include unavailable stocks in indexStocks array.
 
-## Live index funds:
-${INDICES.map(idx => `${idx.ticker} "${idx.name}": ${idx.stocks.join(', ')}`).join('\n')}
+## Deployed on-chain index funds:
+${DEPLOYED_INDICES.length > 0 ? DEPLOYED_INDICES.map(idx => `${idx.symbol} "${idx.name}": ${idx.stocks.join(', ')}`).join('\n') : 'No indices deployed yet. Users can create them!'}
 
 ## Response format:
 Respond with a JSON object ONLY, no markdown code blocks, just raw JSON:
@@ -972,7 +967,7 @@ function executeAction(parsed, balances) {
 
 function OverviewView({ setView, wallet, balances, connectW, walletLoading, refreshBalances }) {
   const liveStocks = STOCKS.filter(s => s.live);
-  const topIndex = INDICES[0];
+  const topIndex = DEPLOYED_INDICES[0];
   const statIcon = (d) => React.createElement('svg',{viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},React.createElement('path',{d}));
   const connected = !!wallet;
   const portfolioValue = connected ? liveStocks.reduce((sum, s) => sum + (balances[s.ticker] || 0) * s.price, 0) : 0;
@@ -1004,9 +999,9 @@ function OverviewView({ setView, wallet, balances, connectW, walletLoading, refr
       </div>
       <div className="ov-stat" style={{cursor:'pointer'}} onClick={() => setView('indices')}>
         <div className="ov-stat-icon">{statIcon('M4 6h16M4 12h16M4 18h7')}</div>
-        <div className="ov-stat-val">{INDICES.length}</div>
-        <div className="ov-stat-lbl">Live Index</div>
-        <div className="ov-stat-foot">TVL $847K total</div>
+        <div className="ov-stat-val">{DEPLOYED_INDICES.length}</div>
+        <div className="ov-stat-lbl">On-Chain Index</div>
+        <div className="ov-stat-foot">{DEPLOYED_INDICES.length > 0 ? DEPLOYED_INDICES.map(i=>i.symbol).join(', ') : 'Create your first'}</div>
       </div>
       <div className="ov-stat" style={{cursor:'pointer'}} onClick={() => setView('stocks')}>
         <div className="ov-stat-icon">{statIcon('M22 12h-4l-3 9L9 3l-3 9H2')}</div>
@@ -1016,9 +1011,9 @@ function OverviewView({ setView, wallet, balances, connectW, walletLoading, refr
       </div>
       <div className="ov-stat">
         <div className="ov-stat-icon">{statIcon('M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8v1m0 6v1m9-4a9 9 0 11-18 0 9 9 0 0118 0z')}</div>
-        <div className="ov-stat-val">1.9K<span className="unit">USDC</span></div>
-        <div className="ov-stat-lbl">Fees Earned</div>
-        <div className="ov-stat-foot"><span className="up">&#9650; +$124</span> this week</div>
+        <div className="ov-stat-val">{connected ? (balances.RBH || 0).toFixed(3) : '--'}<span className="unit">RBH</span></div>
+        <div className="ov-stat-lbl">Gas Balance</div>
+        <div className="ov-stat-foot">{connected ? 'Available for transactions' : 'Connect wallet'}</div>
       </div>
     </div>
 
@@ -1052,13 +1047,18 @@ function OverviewView({ setView, wallet, balances, connectW, walletLoading, refr
             <span className="ov-link" onClick={() => setView('indices')}>View All &#8599;</span>
           </div>
           <div className="ov-panel-body">
-            {INDICES.slice(0, 3).map(idx => <div key={idx.id} className="ov-row" style={{cursor:'pointer'}} onClick={() => setView('indices')}>
-              <span style={{fontFamily:'var(--display)', fontWeight:600, letterSpacing:'.06em', fontSize:13, width:110}}>{idx.name}</span>
-              <span style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--blue)', fontWeight:500, width:50}}>{idx.ticker}</span>
-              <span style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', flex:1}}>{idx.stocks.join(' \u00b7 ')}</span>
-              <span style={{fontFamily:'var(--display)', fontWeight:600, fontSize:13, width:65, textAlign:'right'}}>{idx.tvl}</span>
-              <span style={{fontFamily:'var(--mono)', fontSize:11, width:55, textAlign:'right', color: idx.perf >= 0 ? 'var(--green)' : 'var(--red)'}}>{idx.perf > 0 ? '+' : ''}{idx.perf}%</span>
-            </div>)}
+            {DEPLOYED_INDICES.length > 0
+              ? DEPLOYED_INDICES.slice(0, 3).map(idx => <div key={idx.address} className="ov-row" style={{cursor:'pointer'}} onClick={() => setView('indices')}>
+                  <span style={{fontFamily:'var(--display)', fontWeight:600, letterSpacing:'.06em', fontSize:13, width:110}}>{idx.name}</span>
+                  <span style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--blue)', fontWeight:500, width:50}}>{idx.symbol}</span>
+                  <span style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', flex:1}}>{idx.stocks.join(' \u00b7 ')}</span>
+                  <span style={{fontFamily:'var(--display)', fontWeight:600, fontSize:13, width:65, textAlign:'right'}}>{idx.totalSupply.toFixed(1)}</span>
+                  <span style={{fontFamily:'var(--mono)', fontSize:11, width:55, textAlign:'right', color:'var(--ink-mute)'}}>{idx.feeBps/100}%</span>
+                </div>)
+              : <div className="ov-row" style={{justifyContent:'center', color:'var(--ink-mute)', fontFamily:'var(--mono)', fontSize:11, cursor:'pointer'}} onClick={() => setView('create')}>
+                  No indices yet. Create your first index fund.
+                </div>
+            }
           </div>
         </div>
       </div>
@@ -1094,10 +1094,10 @@ function OverviewView({ setView, wallet, balances, connectW, walletLoading, refr
           </div>
           <div className="ov-panel-body">
             {[
-              { k:'Total TVL', v:'$847,200' },
-              { k:'Fees (24h)', v:'$1,240' },
-              { k:'Minted', v:'3,847 tokens' },
-              { k:'Creators', v:'12' },
+              { k:'Index Deployed', v: String(DEPLOYED_INDICES.length) },
+              { k:'Total Supply', v: DEPLOYED_INDICES.reduce((s,i) => s + i.totalSupply, 0).toFixed(2) },
+              { k:'Stocks Live', v: String(STOCKS.filter(s=>s.live).length) },
+              { k:'Chain', v: 'RH Testnet' },
             ].map((r, i) => <div key={i} className="ov-row">
               <span style={{fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--ink-soft)'}}>{r.k}</span>
               <span style={{fontFamily:'var(--display)', fontSize:14, fontWeight:600, fontFeatureSettings:'"tnum"'}}>{r.v}</span>
@@ -1231,26 +1231,25 @@ function IndicesView({ setView, wallet, balances, refreshBalances }) {
       })()}
     </>}
 
-    {/* Example/demo indices */}
+    {/* All indices from on-chain */}
     <div className="sec-title" style={{marginTop:28}}>
       <span className="kicker">&sect; 03</span>
-      <h2>{DEPLOYED_INDICES.length > 0 ? 'Example Index' : 'Live Index'}</h2>
+      <h2>All Indices</h2>
     </div>
-    <table className="indices">
-      <thead><tr><th>ID</th><th>Index Name</th><th>Ticker</th><th>Composition</th><th>TVL</th><th>7d</th><th>Fee</th><th>Status</th></tr></thead>
+    {DEPLOYED_INDICES.length > 0 ? <table className="indices">
+      <thead><tr><th>#</th><th>Index Name</th><th>Ticker</th><th>Stocks</th><th>Supply</th><th>Fee</th><th>Creator</th></tr></thead>
       <tbody>
-        {INDICES.map(idx => <tr key={idx.id}>
-          <td className="idx-id">{idx.id}</td>
+        {DEPLOYED_INDICES.map((idx, i) => <tr key={idx.address}>
+          <td className="idx-id">{i + 1}</td>
           <td className="idx-name">{idx.name}</td>
-          <td style={{fontFamily:'var(--mono)', fontSize:12, color:'var(--blue)', fontWeight:500}}>{idx.ticker}</td>
+          <td style={{fontFamily:'var(--mono)', fontSize:12, color:'var(--blue)', fontWeight:500}}>{idx.symbol}</td>
           <td className="idx-stocks">{idx.stocks.join(' \u00b7 ')}</td>
-          <td className="idx-tvl">{idx.tvl}</td>
-          <td className={`idx-perf ${idx.perf >= 0 ? 'up' : 'dn'}`}>{idx.perf > 0 ? '+' : ''}{idx.perf}%</td>
-          <td className="idx-fee">{idx.fee}%</td>
-          <td><span className={`pill ${idx.status}`}>{idx.status}</span></td>
+          <td className="idx-tvl">{idx.totalSupply.toFixed(2)}</td>
+          <td className="idx-fee">{(idx.feeBps / 100).toFixed(1)}%</td>
+          <td style={{fontFamily:'var(--mono)', fontSize:11}}>{idx.creator.slice(0,6)}...{idx.creator.slice(-4)}</td>
         </tr>)}
       </tbody>
-    </table>
+    </table> : <div style={{padding:'32px 0', textAlign:'center', color:'var(--dim)', fontSize:14}}>No indices deployed yet. Create your first index above!</div>}
   </>;
 }
 
@@ -1574,30 +1573,37 @@ function PortfolioView({ wallet, balances, connectW, walletLoading }) {
 }
 
 function TreasuryView() {
+  const totalSupply = DEPLOYED_INDICES.reduce((s, i) => s + i.totalSupply, 0);
+  const totalIndices = DEPLOYED_INDICES.length;
+  const liveStocks = STOCKS.filter(s => s.live).length;
   return <>
     <div className="crumbs"><div className="path">Dashboard / <b>Treasury</b></div></div>
     <div className="sec-title" style={{marginTop:18}}><h2>Protocol Treasury</h2><span className="ornament">&#10022; &#10022; &#10022;</span></div>
     <section className="stats">
-      <div className="stat"><div className="stat-label">Total Treasury</div><div className="stat-value">847K<span className="unit">USDC</span></div><div className="stat-foot"><span className="up">&#9650;</span> +18.2% (7d)</div></div>
-      <div className="stat"><div className="stat-label">Protocol Fees (7d)</div><div className="stat-value">$2,841</div><div className="stat-foot">From index mints/redeems</div></div>
-      <div className="stat"><div className="stat-label">Creator Payouts (7d)</div><div className="stat-value">$1,926</div><div className="stat-foot">Distributed to 8 creators</div></div>
-      <div className="stat"><div className="stat-label">Unique Holders</div><div className="stat-value">234</div><div className="stat-foot">+42 new this week</div></div>
+      <div className="stat"><div className="stat-label">Index Deployed</div><div className="stat-value">{totalIndices}</div><div className="stat-foot">On-chain via IndexFactory</div></div>
+      <div className="stat"><div className="stat-label">Index Supply</div><div className="stat-value">{totalSupply.toFixed(1)}<span className="unit">tokens</span></div><div className="stat-foot">Total minted across all indices</div></div>
+      <div className="stat"><div className="stat-label">Stocks Available</div><div className="stat-value">{liveStocks}</div><div className="stat-foot">Live on RH Chain Testnet</div></div>
+      <div className="stat"><div className="stat-label">Factory</div><div className="stat-value" style={{fontSize:14, wordBreak:'break-all'}}>{FACTORY_ADDRESS.slice(0,10)}...</div><div className="stat-foot">IndexFactory contract</div></div>
     </section>
-    <div className="sec-title" style={{marginTop:36}}><span className="kicker">7d</span><h2>Treasury Growth</h2></div>
-    <svg viewBox="0 0 800 200" style={{width:'100%', height:'auto', display:'block', marginTop:16, border:'1px solid var(--ink)', background:'var(--paper)', padding:20}}>
-      <defs><pattern id="hatch2" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="var(--blue)" strokeWidth="0.6"/></pattern></defs>
-      <line x1="40" y1="170" x2="780" y2="170" stroke="var(--ink)" strokeWidth="1"/>
-      <line x1="40" y1="120" x2="780" y2="120" stroke="var(--rule)" strokeWidth=".5" strokeDasharray="2 3"/>
-      <line x1="40" y1="70" x2="780" y2="70" stroke="var(--rule)" strokeWidth=".5" strokeDasharray="2 3"/>
-      <line x1="40" y1="20" x2="780" y2="20" stroke="var(--rule)" strokeWidth=".5" strokeDasharray="2 3"/>
-      <path d="M40 140 L150 120 L260 130 L370 90 L480 100 L590 60 L700 70 L780 40" fill="none" stroke="var(--ink)" strokeWidth="2"/>
-      <path d="M40 140 L150 120 L260 130 L370 90 L480 100 L590 60 L700 70 L780 40 L780 170 L40 170 Z" fill="url(#hatch2)" opacity=".5"/>
-      <g fontFamily="IBM Plex Mono" fontSize="10" fill="var(--ink-soft)" letterSpacing="1">
-        <text x="40" y="190">MON</text><text x="260" y="190">WED</text><text x="480" y="190">FRI</text><text x="700" y="190">SUN</text>
-      </g>
-      <circle cx="780" cy="40" r="4" fill="var(--ink)"/>
-      <text x="720" y="32" fontFamily="Cinzel" fontSize="14" fill="var(--ink)">847K</text>
-    </svg>
+    <div className="sec-title" style={{marginTop:36}}><h2>Deployed Index</h2></div>
+    {DEPLOYED_INDICES.length > 0 ? <table className="indices">
+      <thead><tr><th>Name</th><th>Symbol</th><th>Stocks</th><th>Supply</th><th>Fee</th><th>Contract</th></tr></thead>
+      <tbody>
+        {DEPLOYED_INDICES.map(idx => <tr key={idx.address}>
+          <td className="idx-name">{idx.name}</td>
+          <td style={{fontFamily:'var(--mono)', fontSize:12, color:'var(--blue)', fontWeight:500}}>{idx.symbol}</td>
+          <td className="idx-stocks">{idx.stocks.join(' \u00b7 ')}</td>
+          <td style={{fontFamily:'var(--mono)', fontFeatureSettings:'"tnum"'}}>{idx.totalSupply.toFixed(2)}</td>
+          <td className="idx-fee">{idx.feeBps/100}%</td>
+          <td style={{fontFamily:'var(--mono)', fontSize:10}}><a href={RH_EXPLORER.replace('/token/','/address/') + idx.address} target="_blank" style={{color:'var(--blue)'}}>{idx.address.slice(0,8)}...</a></td>
+        </tr>)}
+      </tbody>
+    </table> : <p style={{fontFamily:'var(--sans)', color:'var(--ink-soft)', padding:40, textAlign:'center'}}>No indices deployed yet. Go to Create Index to deploy your first one.</p>}
+    <div style={{marginTop:24, padding:16, border:'1px solid var(--rule)', fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', lineHeight:1.8}}>
+      <div>IndexFactory: <a href={RH_EXPLORER.replace('/token/','/address/') + FACTORY_ADDRESS} target="_blank" style={{color:'var(--blue)'}}>{FACTORY_ADDRESS}</a></div>
+      <div>Network: Robinhood Chain Testnet (Chain ID: 46630)</div>
+      <div>Explorer: <a href="https://explorer.testnet.chain.robinhood.com" target="_blank" style={{color:'var(--blue)'}}>explorer.testnet.chain.robinhood.com</a></div>
+    </div>
   </>;
 }
 
@@ -1720,28 +1726,26 @@ function RightRail({ setView }) {
       </div>
     </div>
     <div className="rail-section">
-      <div className="rail-kicker">Live Feed</div>
-      <h3>Activity <span className="deco">&middot; &#10022;</span></h3>
-      {[
-        { addr:'0x7d\u2026a91', tag:'buy', detail:'Bought 12 $TECH ($3,026)', time:'2 min ago' },
-        { addr:'0x44\u2026f02', tag:'create', detail:'Created "Finance Pack"', time:'18 min ago' },
-        { addr:'0x18\u20263cc', tag:'buy', detail:'Bought 5 $EVREV ($1,240)', time:'34 min ago' },
-        { addr:'0x9a\u2026b71', tag:'sell', detail:'Redeemed 8 $TECH', time:'1h ago' },
-      ].map((f, i) => <div key={i} className="feed-item">
-        <div className="feed-row"><span className="feed-action">{f.addr}</span><span className={`feed-tag ${f.tag}`}>{f.tag}</span></div>
-        <div className="feed-detail">{f.detail}</div>
-        <div className="feed-time">{f.time}</div>
-      </div>)}
+      <div className="rail-kicker">On-Chain</div>
+      <h3>Index Funds <span className="deco">&middot; &#10022;</span></h3>
+      {DEPLOYED_INDICES.length > 0
+        ? DEPLOYED_INDICES.map((idx, i) => <div key={i} className="feed-item">
+            <div className="feed-row"><span className="feed-action">{idx.symbol}</span><span className="feed-tag create">live</span></div>
+            <div className="feed-detail">{idx.name} ({idx.stocks.join(', ')})</div>
+            <div className="feed-time">Supply: {idx.totalSupply.toFixed(2)}</div>
+          </div>)
+        : <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-mute)', padding:'12px 0'}}>No indices deployed yet</div>
+      }
     </div>
     <div className="rail-section">
       <div className="rail-kicker">Protocol</div>
-      <h3>Treasury <span className="deco">&middot; &#9830;</span></h3>
-      <div className="treas-value">847,420<span className="unit">USDC</span></div>
-      <div className="treas-delta">&#9650; +18.2% (7d)</div>
+      <h3>Factory <span className="deco">&middot; &#9830;</span></h3>
+      <div className="treas-value">{DEPLOYED_INDICES.length}<span className="unit">index</span></div>
+      <div className="treas-delta">{STOCKS.filter(s=>s.live).length} stocks live</div>
       <div className="treas-breakdown">
-        <div className="treas-row"><span>Fees (7d)</span><b>$2,841</b></div>
-        <div className="treas-row"><span>Payouts (7d)</span><b>$1,926</b></div>
-        <div className="treas-row"><span>Holders</span><b>234</b></div>
+        <div className="treas-row"><span>Supply</span><b>{DEPLOYED_INDICES.reduce((s,i)=>s+i.totalSupply,0).toFixed(1)}</b></div>
+        <div className="treas-row"><span>Stocks</span><b>{STOCKS.filter(s=>s.live).map(s=>s.ticker).join(', ')}</b></div>
+        <div className="treas-row"><span>Chain</span><b>RH Testnet</b></div>
       </div>
     </div>
   </aside>;

@@ -1210,7 +1210,7 @@ function IndicesView({ setView, wallet, balances, refreshBalances }) {
               <td style={{fontFamily:'var(--mono)', fontWeight:600}}>{(balances[idx.symbol] || 0).toFixed(4)}</td>
               <td>
                 <button className="btn primary" style={{fontSize:10, padding:'4px 12px'}}>
-                  {mintIdx === idx.address ? 'Close' : 'Buy / Sell'}
+                  {mintIdx === idx.address ? 'Close' : 'Trade'}
                 </button>
               </td>
             </tr>
@@ -1222,10 +1222,10 @@ function IndicesView({ setView, wallet, balances, refreshBalances }) {
                 <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8}}>
                   <label style={{fontFamily:'var(--mono)', fontSize:11}}>Amount:</label>
                   <input value={mintAmount} onChange={e => setMintAmount(e.target.value)} placeholder="1.0" style={{width:100, padding:'6px 10px', border:'1px solid var(--ink)', fontFamily:'var(--mono)', fontSize:13, background:'var(--paper)'}} />
-                  <button className="btn primary" style={{fontSize:11, padding:'6px 16px'}} onClick={(e) => { e.stopPropagation(); handleMint(idx); }} disabled={minting}>{minting ? 'Processing...' : 'Mint (Buy)'}</button>
-                  <button className="btn" style={{fontSize:11, padding:'6px 16px'}} onClick={(e) => { e.stopPropagation(); handleBurn(idx); }} disabled={minting}>{minting ? 'Processing...' : 'Burn (Sell)'}</button>
+                  <button className="btn primary" style={{fontSize:11, padding:'6px 16px'}} onClick={(e) => { e.stopPropagation(); handleMint(idx); }} disabled={minting}>{minting ? 'Processing...' : 'Buy'}</button>
+                  <button className="btn" style={{fontSize:11, padding:'6px 16px'}} onClick={(e) => { e.stopPropagation(); handleBurn(idx); }} disabled={minting}>{minting ? 'Processing...' : 'Sell'}</button>
                 </div>
-                <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-mute)'}}>Mint: approve &amp; deposit underlying stocks proportionally to receive index tokens. Burn: return index tokens to receive stocks back.</div>
+                <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-mute)'}}>Buy: deposit underlying stocks proportionally to receive index tokens. Sell: return index tokens to receive your stocks back.</div>
                 {mintResult && <div style={{fontFamily:'var(--mono)', fontSize:11, marginTop:8, padding:'6px 10px', background: mintResult.ok ? 'rgba(0,180,0,.08)' : 'rgba(180,0,0,.08)', color: mintResult.ok ? 'var(--green)' : 'var(--red)'}}>{mintResult.msg}</div>}
               </div>
             </td></tr>}

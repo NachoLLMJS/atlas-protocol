@@ -715,8 +715,8 @@ function useWallet() {
 // Keys loaded from config.js (gitignored)
 let tavilyKeyIdx = 0;
 
-// Trigger web search for questions, news, people, events, anything that benefits from real-time info
-const SEARCH_PATTERN = /\?|what\s|how\s|when\s|who\s|why\s|where\s|is\s|are\s|was\s|were\s|will\s|can\s|do\s|does\s|did\s|price of|worth|trending|news|current|latest|check|find|tell me|info|explain|market|today|announce|robinhood|arbitrum|trump|biden|elon|crypto|bitcoin|eth|election|war|ai\s|openai|nvidia|apple|google|meta|microsoft/i;
+// Trigger web search broadly - almost any question or request benefits from real-time data
+const SEARCH_PATTERN = /\?|what\s|how\s|when\s|who\s|why\s|where\s|is\s|are\s|was\s|were\s|will\s|can\s|do\s|does\s|did\s|price|worth|trending|news|current|latest|check|find|tell me|info|explain|market|today|announce|search|busca|mira|link|url|video|tutorial|youtube|recipe|receta|dame|give me|show me|look up|internet|web|online/i;
 
 const LIVE_TICKERS = STOCKS.filter(s => s.live).map(s => s.ticker);
 const ATLAS_SYSTEM_PROMPT = `You are ATLAS, an AI-powered trading terminal for the ATLAS protocol on Robinhood Chain (Arbitrum Orbit L2).
@@ -728,7 +728,7 @@ const ATLAS_SYSTEM_PROMPT = `You are ATLAS, an AI-powered trading terminal for t
 4. **Send tokens**: Help users send tokens to other wallet addresses
 5. **Portfolio**: Show the user's current holdings
 6. **Price check**: Show current prices for stocks
-7. **General conversation**: You can answer ANY question. If you receive web search results, use them to answer. You are helpful and knowledgeable about any topic.
+7. **General conversation + Web Search**: You have REAL web search capability via Tavily. When you receive "WEB SEARCH RESULTS" in the system message, those are REAL results from the internet. Use them to answer accurately. Include URLs/links from the results when the user asks for links. You can answer ANY topic: news, politics, recipes, tutorials, crypto, anything.
 
 ## CRITICAL: Available stocks on Robinhood Chain Testnet
 ONLY these 5 stocks are live and available for trading/indexing:
@@ -764,8 +764,8 @@ Respond with a JSON object ONLY, no markdown code blocks, just raw JSON:
 - If user asks for unavailable stocks, explain they're not on testnet yet and suggest alternatives from the 5 available.
 - Multi-turn: remember context. "buy TSLA" then "500 dollars" = action="buy" with full data.
 - Be concise, terminal-style. No long paragraphs.
-- You CAN answer general questions about anything (politics, news, crypto, etc). Use web search results when provided. Don't refuse to answer off-topic questions.
-- Always respond in English`;
+- You CAN and SHOULD answer general questions about anything (politics, news, recipes, crypto, tutorials, etc). You have real web search. When WEB SEARCH RESULTS are provided, use the information AND include the URLs/links from them. NEVER say "I can't browse the internet" because you CAN via Tavily search.
+- Respond in the same language the user is using (Spanish if they write Spanish, English if English, etc.)`;
 
 // ─── TAVILY SEARCH ───
 async function searchTavily(query) {
@@ -786,7 +786,7 @@ async function searchTavily(query) {
       const data = await res.json();
       const parts = [];
       if (data.answer) parts.push('[Summary] ' + data.answer);
-      if (data.results) data.results.slice(0, 3).forEach(r => parts.push(`[${r.title}] ${r.content?.slice(0, 200)}`));
+      if (data.results) data.results.slice(0, 3).forEach(r => parts.push(`[${r.title}] ${r.content?.slice(0, 200)} | URL: ${r.url}`));
       return parts.join('\n');
     } catch { continue; }
   }

@@ -34,6 +34,7 @@ contract IndexToken {
     address public creator;
     uint256 public feeBps; // creator fee in basis points (e.g. 30 = 0.3%)
     address public factory;
+    address public vault; // AtlasVault — receives 50% of fees for LPs
 
     // ── ERC-20 events ──
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -47,7 +48,8 @@ contract IndexToken {
         address[] memory _stocks,
         uint256[] memory _weights,
         address _creator,
-        uint256 _feeBps
+        uint256 _feeBps,
+        address _vault
     ) {
         require(_stocks.length >= 2 && _stocks.length <= 5, "2-5 stocks");
         require(_stocks.length == _weights.length, "length mismatch");
@@ -63,6 +65,7 @@ contract IndexToken {
         creator = _creator;
         feeBps = _feeBps;
         factory = msg.sender;
+        vault = _vault;
     }
 
     // ── ERC-20 functions ──
@@ -114,15 +117,24 @@ contract IndexToken {
             require(token.transferFrom(msg.sender, address(this), stockAmount), "transfer failed");
         }
 
-        // Apply creator fee
+        // Apply fee: 50% to creator, 50% to vault (LPs)
         uint256 fee = (amount * feeBps) / 10000;
         uint256 userAmount = amount - fee;
+        uint256 creatorFee = fee / 2;
+        uint256 vaultFee = fee - creatorFee; // handles odd rounding
 
         totalSupply += amount;
         balanceOf[msg.sender] += userAmount;
-        if (fee > 0) {
-            balanceOf[creator] += fee;
-            emit Transfer(address(0), creator, fee);
+        if (creatorFee > 0) {
+            balanceOf[creator] += creatorFee;
+            emit Transfer(address(0), creator, creatorFee);
+        }
+        if (vaultFee > 0 && vault != address(0)) {
+            balanceOf[vault] += vaultFee;
+            emit Transfer(address(0), vault, vaultFee);
+        } else if (vaultFee > 0) {
+            balanceOf[creator] += vaultFee;
+            emit Transfer(address(0), creator, vaultFee);
         }
         emit Transfer(address(0), msg.sender, userAmount);
         emit Mint(msg.sender, userAmount, amount);

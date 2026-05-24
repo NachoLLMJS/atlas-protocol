@@ -7,10 +7,13 @@ import "./IndexToken.sol";
  * @title ATLAS IndexFactory
  * @notice Factory contract that deploys new IndexToken instances.
  *         Anyone can create a custom stock index fund.
+ *         Fee split: 50% to index creator, 50% to AtlasVault (LPs).
  */
 contract IndexFactory {
     address[] public allIndices;
     mapping(address => address[]) public creatorIndices;
+    address public vault; // AtlasVault address for fee split
+    address public owner;
 
     event IndexCreated(
         address indexed indexToken,
@@ -22,6 +25,11 @@ contract IndexFactory {
         uint256 feeBps
     );
 
+    constructor(address _vault) {
+        vault = _vault;
+        owner = msg.sender;
+    }
+
     function createIndex(
         string memory _name,
         string memory _symbol,
@@ -29,7 +37,7 @@ contract IndexFactory {
         uint256[] memory _weights,
         uint256 _feeBps
     ) external returns (address) {
-        IndexToken idx = new IndexToken(_name, _symbol, _stocks, _weights, msg.sender, _feeBps);
+        IndexToken idx = new IndexToken(_name, _symbol, _stocks, _weights, msg.sender, _feeBps, vault);
         address addr = address(idx);
         allIndices.push(addr);
         creatorIndices[msg.sender].push(addr);
@@ -44,4 +52,9 @@ contract IndexFactory {
     }
 
     function getIndex(uint256 i) external view returns (address) { return allIndices[i]; }
+
+    function setVault(address _vault) external {
+        require(msg.sender == owner, "not owner");
+        vault = _vault;
+    }
 }

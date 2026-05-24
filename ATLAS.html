@@ -577,13 +577,13 @@ function useLivePrices() {
 }
 
 // ─── CONTRACTS & CHAIN ───
-const FACTORY_ADDRESS = '0xfba93D3DE479Bcf6d4b1eFCeC317055F9253b269';
+const FACTORY_ADDRESS = '0xE0136684FaA29801885e1faF619bc5C8894CA35D';
 
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)', 'function transfer(address to, uint256 amount) returns (bool)', 'function approve(address spender, uint256 amount) returns (bool)', 'function allowance(address owner, address spender) view returns (uint256)', 'function symbol() view returns (string)', 'function name() view returns (string)', 'function totalSupply() view returns (uint256)'];
 
-const INDEX_TOKEN_ABI = [...ERC20_ABI, 'function mint(uint256 amount)', 'function burn(uint256 amount)', 'function getStocks() view returns (address[])', 'function getWeights() view returns (uint256[])', 'function creator() view returns (address)', 'function feeBps() view returns (uint256)', 'function stockCount() view returns (uint256)', 'function stocks(uint256) view returns (address)', 'function weights(uint256) view returns (uint256)'];
+const INDEX_TOKEN_ABI = [...ERC20_ABI, 'function mint(uint256 amount)', 'function burn(uint256 amount)', 'function getStocks() view returns (address[])', 'function getWeights() view returns (uint256[])', 'function creator() view returns (address)', 'function feeBps() view returns (uint256)', 'function vault() view returns (address)', 'function stockCount() view returns (uint256)', 'function stocks(uint256) view returns (address)', 'function weights(uint256) view returns (uint256)'];
 
-const FACTORY_ABI = ['function createIndex(string name, string symbol, address[] stocks, uint256[] weights, uint256 feeBps) returns (address)', 'function totalIndices() view returns (uint256)', 'function allIndices(uint256) view returns (address)', 'function getCreatorIndices(address creator) view returns (address[])', 'event IndexCreated(address indexed indexToken, string name, string symbol, address indexed creator, address[] stocks, uint256[] weights, uint256 feeBps)'];
+const FACTORY_ABI = ['function createIndex(string name, string symbol, address[] stocks, uint256[] weights, uint256 feeBps) returns (address)', 'function totalIndices() view returns (uint256)', 'function allIndices(uint256) view returns (address)', 'function getCreatorIndices(address creator) view returns (address[])', 'function vault() view returns (address)', 'event IndexCreated(address indexed indexToken, string name, string symbol, address indexed creator, address[] stocks, uint256[] weights, uint256 feeBps)'];
 
 // ─── ATLAS VAULT ───
 const VAULT_ADDRESS = '0x3130865dE0D1594E38C5cC52596712F05d93a4d5';

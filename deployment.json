@@ -2,7 +2,7 @@
   "network": "robinhood-testnet",
   "chainId": 46630,
   "deployer": "0x113Ee1c220096f08Ad4da2b50887745E644F5117",
-  "IndexFactory": "0xfba93D3DE479Bcf6d4b1eFCeC317055F9253b269",
+  "IndexFactory": "0xE0136684FaA29801885e1faF619bc5C8894CA35D",
   "deployedAt": "2026-05-24T15:36:16.893Z",
   "AtlasVault": "0x3130865dE0D1594E38C5cC52596712F05d93a4d5",
   "vaultDeployedAt": "2026-05-24T18:26:09.076Z",
@@ -12,5 +12,8 @@
     "NFLX: 2",
     "AMD: 2",
     "PLTR: 2"
-  ]
+  ],
+  "IndexFactoryV1": "0xfba93D3DE479Bcf6d4b1eFCeC317055F9253b269",
+  "factoryV2DeployedAt": "2026-05-24T18:46:46.072Z",
+  "feeSplit": "50% creator / 50% vault (LPs)"
 }

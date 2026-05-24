@@ -1449,7 +1449,7 @@ function StocksView({ wallet, balances, refreshBalances }) {
   </>;
 }
 
-function TerminalView({ wallet, balances, refreshBalances }) {
+function TerminalView({ wallet, balances, refreshBalances, connectW, walletLoading }) {
   const walletStatus = wallet ? `Wallet: ${wallet.address.slice(0,6)}...${wallet.address.slice(-4)}` : 'Wallet: not connected (connect via sidebar)';
   const [messages, setMessages] = useState([
     { type:'system', text:'Atlas Terminal \u00b7 v0.1.0 \u00b7 Robinhood Chain Testnet' },
@@ -1536,11 +1536,14 @@ function TerminalView({ wallet, balances, refreshBalances }) {
 
     // Check wallet connection for any on-chain action
     if (!wallet && (act === 'buy_index' || act === 'sell_index' || act === 'buy' || act === 'sell' || act === 'send' || act === 'create_index')) {
-      setPendingConfirm(null);
       setMessages(prev => {
         const without = prev.filter(m => m.type !== 'confirm');
-        return [...without, { type:'error', text: 'Wallet not connected. Please connect your wallet using the sidebar button first, then try again.' }, { type:'spacer' }];
+        return [...without, { type:'system', text: 'Connecting wallet...' }];
       });
+      if (connectW) await connectW();
+      // After connecting, show message to retry
+      setMessages(prev => [...prev, { type:'agent', text: 'Wallet connected! Please try your command again.' }, { type:'spacer' }]);
+      setPendingConfirm(null);
       return;
     }
 
@@ -1811,6 +1814,10 @@ function TerminalView({ wallet, balances, refreshBalances }) {
         })}
         <div ref={messagesEnd}/>
       </div>
+      {!wallet && <div style={{padding:'8px 16px', background:'rgba(94,121,178,.1)', borderTop:'1px solid var(--rule)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+        <span style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--ink-soft)'}}>Connect your wallet to trade on-chain</span>
+        <button className="btn primary" style={{fontSize:10, padding:'5px 14px'}} onClick={connectW} disabled={walletLoading}>{walletLoading ? 'Connecting...' : 'Connect Wallet'}</button>
+      </div>}
       <div className="terminal-input-wrap">
         <span className="prompt-char">&#10095;</span>
         <input ref={inputRef} className="terminal-input" value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey} placeholder={pendingConfirm ? 'Confirm or cancel the transaction above' : 'Ask me anything... "buy TSLA", "create an index", "what is ATLAS?"'} disabled={isThinking || !!pendingConfirm} />
@@ -2307,7 +2314,7 @@ function App() {
       {view === 'overview' && <OverviewView setView={setView} wallet={wallet} balances={balances} connectW={connectW} walletLoading={walletLoading} refreshBalances={refreshBalances}/>}
       {view === 'indices' && <IndicesView setView={setView} wallet={wallet} balances={balances} refreshBalances={refreshBalances}/>}
       {view === 'stocks' && <StocksView wallet={wallet} balances={balances} refreshBalances={refreshBalances}/>}
-      {view === 'terminal' && <TerminalView wallet={wallet} balances={balances} refreshBalances={refreshBalances}/>}
+      {view === 'terminal' && <TerminalView wallet={wallet} balances={balances} refreshBalances={refreshBalances} connectW={connectW} walletLoading={walletLoading}/>}
       {view === 'portfolio' && <PortfolioView wallet={wallet} balances={balances} connectW={connectW} walletLoading={walletLoading}/>}
       {view === 'treasury' && <TreasuryView/>}
       {view === 'create' && <CreateIndexView setView={setView} wallet={wallet}/>}

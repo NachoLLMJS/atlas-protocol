@@ -863,14 +863,43 @@ async function callAtlasAI(history, userBalances) {
   const raw = data.choices?.[0]?.message?.content || '';
 
   // Parse JSON response from AI
+  let parsed;
   try {
-    // Strip markdown code fences if present
     const cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
-    return JSON.parse(cleaned);
+    parsed = JSON.parse(cleaned);
   } catch {
-    // If AI didn't return valid JSON, wrap it
-    return { reply: raw, action: 'none', data: {} };
+    parsed = { reply: raw, action: 'none', data: {} };
   }
+
+  // Fallback: if AI said action=none but user clearly wants buy/sell, detect from user input
+  if (parsed.action === 'none' || !parsed.action) {
+    const lastUserMsg = history.filter(m => m.role === 'user').pop()?.content?.toLowerCase() || '';
+    const allMsgs = (lastUserMsg + ' ' + (parsed.reply || '')).toLowerCase();
+
+    // Detect buy/sell patterns
+    const buyMatch = allMsgs.match(/(?:buy|compra|buying|comprando)\s+(\d+(?:\.\d+)?)\s+(\w+)/i) ||
+                     allMsgs.match(/(\d+(?:\.\d+)?)\s+(?:de\s+)?(\w+).*(?:buy|compra)/i);
+    const sellMatch = allMsgs.match(/(?:sell|vend[ea]|selling|vendiendo)\s+(\d+(?:\.\d+)?)\s+(\w+)/i) ||
+                      allMsgs.match(/(\d+(?:\.\d+)?)\s+(?:de\s+)?(\w+).*(?:sell|vend)/i);
+
+    if (sellMatch) {
+      const qty = parseFloat(sellMatch[1]);
+      const ticker = sellMatch[2].toUpperCase().replace(/^\$/, '');
+      if (qty > 0 && ticker.length >= 2) {
+        parsed.action = 'sell';
+        parsed.data = { ...parsed.data, ticker, qty };
+      }
+    } else if (buyMatch) {
+      const qty = parseFloat(buyMatch[1]);
+      const ticker = buyMatch[2].toUpperCase().replace(/^\$/, '');
+      if (qty > 0 && ticker.length >= 2) {
+        parsed.action = 'buy';
+        parsed.data = { ...parsed.data, ticker, qty };
+      }
+    }
+  }
+
+  return parsed;
 }
 
 // ─── BUILD CONFIRMATION MESSAGE ───

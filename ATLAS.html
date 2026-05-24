@@ -868,42 +868,59 @@ async function callAtlasAI(history, userBalances) {
 function buildConfirmation(parsed) {
   const { action, data } = parsed;
 
-  if (action === 'buy' && data?.ticker && data?.amount) {
-    const stock = STOCKS.find(s => s.ticker === data.ticker.toUpperCase());
-    if (stock) {
-      const qty = (data.amount / stock.price).toFixed(4);
+  if (action === 'buy' && data?.ticker && (data?.amount || data?.qty)) {
+    const ticker = data.ticker.toUpperCase().replace(/^\$/, '');
+    const stock = STOCKS.find(s => s.ticker === ticker);
+    const idx = DEPLOYED_INDICES.find(i => i.symbol === '$' + ticker || i.symbol === ticker || i.name.toUpperCase().includes(ticker));
+    if (idx) {
+      const qty = data.qty || data.amount || 1;
+      return {
+        action: 'buy_index', data: { ...data, qty, index: idx },
+        preview: [
+          { type:'agent', text: parsed.reply },
+          { type:'agent', text: `Buy ${qty} ${idx.symbol} (${idx.stocks.join(' + ')}) via AtlasVault` },
+        ],
+        onConfirm: [{ type:'success', text: `\u2713 Bought ${qty} ${idx.symbol}!` }],
+        onCancel: [{ type:'error', text: 'Order cancelled.' }],
+      };
+    } else if (stock) {
+      const qty = data.amount ? (data.amount / stock.price).toFixed(4) : data.qty;
       return {
         action: 'buy', data: { ...data, qty, stock },
         preview: [
           { type:'agent', text: parsed.reply },
           { type:'agent', text: `Buy ${qty} ${stock.ticker} at $${stock.price.toFixed(2)} via AtlasVault` },
         ],
-        onConfirm: [
-          { type:'success', text: `\u2713 Order filled. ${qty} ${stock.ticker} added to your portfolio.` },
-        ],
-        onCancel: [
-          { type:'error', text: 'Order cancelled.' },
-        ],
+        onConfirm: [{ type:'success', text: `\u2713 Order filled. ${qty} ${stock.ticker} added to your portfolio.` }],
+        onCancel: [{ type:'error', text: 'Order cancelled.' }],
       };
     }
   }
 
   if (action === 'sell' && data?.ticker && data?.qty) {
-    const stock = STOCKS.find(s => s.ticker === data.ticker.toUpperCase());
-    if (stock) {
+    const ticker = data.ticker.toUpperCase().replace(/^\$/, '');
+    const stock = STOCKS.find(s => s.ticker === ticker);
+    const idx = DEPLOYED_INDICES.find(i => i.symbol === '$' + ticker || i.symbol === ticker || i.name.toUpperCase().includes(ticker));
+    if (idx) {
+      return {
+        action: 'sell_index', data: { ...data, index: idx },
+        preview: [
+          { type:'agent', text: parsed.reply },
+          { type:'agent', text: `Sell ${data.qty} ${idx.symbol} via AtlasVault` },
+        ],
+        onConfirm: [{ type:'success', text: `\u2713 Sold ${data.qty} ${idx.symbol}! Stocks returned to vault.` }],
+        onCancel: [{ type:'error', text: 'Sale cancelled.' }],
+      };
+    } else if (stock) {
       const total = (data.qty * stock.price).toFixed(2);
       return {
         action: 'sell', data: { ...data, stock },
         preview: [
           { type:'agent', text: parsed.reply },
-          { type:'agent', text: `Sell ${data.qty} ${stock.ticker} at $${stock.price.toFixed(2)} via AtlasVault` },
+          { type:'agent', text: `Sell ${data.qty} ${stock.ticker} at $${stock.price.toFixed(2)}` },
         ],
-        onConfirm: [
-          { type:'success', text: `\u2713 Sale complete. ${data.qty} ${stock.ticker} returned to vault.` },
-        ],
-        onCancel: [
-          { type:'error', text: 'Sale cancelled.' },
-        ],
+        onConfirm: [{ type:'success', text: `\u2713 Sale complete. ${data.qty} ${stock.ticker} sent.` }],
+        onCancel: [{ type:'error', text: 'Sale cancelled.' }],
       };
     }
   }
@@ -1472,6 +1489,66 @@ function TerminalView({ wallet, balances, refreshBalances }) {
   const handleConfirm = async () => {
     if (!pendingConfirm) return;
     const { action: act, data: d } = pendingConfirm;
+
+    // Real on-chain buy index via AtlasVault
+    if (act === 'buy_index' && wallet && d?.index) {
+      setPendingConfirm(null);
+      setMessages(prev => {
+        const without = prev.filter(m => m.type !== 'confirm');
+        return [...without, { type:'system', text: `Buying ${d.qty} ${d.index.symbol} via AtlasVault...` }];
+      });
+      try {
+        const vault = new ethers.Contract(VAULT_ADDRESS, VAULT_ABI, wallet.signer);
+        const amount = ethers.parseEther(String(d.qty));
+        const tx = await vault.buyIndex(d.index.address, amount);
+        setMessages(prev => [...prev, { type:'system', text: `Tx submitted: ${tx.hash.slice(0,14)}...` }]);
+        await tx.wait();
+        if (refreshBalances) refreshBalances();
+        const msgs = [{ type:'success', text: `\u2713 Bought ${d.qty} ${d.index.symbol} via AtlasVault! Tx: ${tx.hash.slice(0,14)}...` }];
+        setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+        setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+        return;
+      } catch (err) {
+        const msgs = [{ type:'error', text: `Buy failed: ${err.reason || err.message}` }];
+        setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+        setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+        return;
+      }
+    }
+
+    // Real on-chain sell index via AtlasVault
+    if (act === 'sell_index' && wallet && d?.index) {
+      setPendingConfirm(null);
+      setMessages(prev => {
+        const without = prev.filter(m => m.type !== 'confirm');
+        return [...without, { type:'system', text: `Selling ${d.qty} ${d.index.symbol} via AtlasVault...` }];
+      });
+      try {
+        const amount = ethers.parseEther(String(d.qty));
+        // Approve index tokens to vault
+        const indexContract = new ethers.Contract(d.index.address, ERC20_ABI, wallet.signer);
+        const allowance = await indexContract.allowance(wallet.address, VAULT_ADDRESS);
+        if (allowance < amount) {
+          setMessages(prev => [...prev, { type:'system', text: 'Approving index tokens...' }]);
+          const approveTx = await indexContract.approve(VAULT_ADDRESS, amount);
+          await approveTx.wait();
+        }
+        const vault = new ethers.Contract(VAULT_ADDRESS, VAULT_ABI, wallet.signer);
+        const tx = await vault.sellIndex(d.index.address, amount);
+        setMessages(prev => [...prev, { type:'system', text: `Tx submitted: ${tx.hash.slice(0,14)}...` }]);
+        await tx.wait();
+        if (refreshBalances) refreshBalances();
+        const msgs = [{ type:'success', text: `\u2713 Sold ${d.qty} ${d.index.symbol}! Stocks returned to vault. Tx: ${tx.hash.slice(0,14)}...` }];
+        setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+        setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+        return;
+      } catch (err) {
+        const msgs = [{ type:'error', text: `Sell failed: ${err.reason || err.message}` }];
+        setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+        setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+        return;
+      }
+    }
 
     // Real on-chain send
     if (act === 'send' && wallet && d?.toAddress && d?.sendAmount && d?.sendToken) {

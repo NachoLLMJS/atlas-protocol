@@ -1236,7 +1236,29 @@ function IndicesView({ setView, wallet, balances, refreshBalances }) {
   </>;
 }
 
-function StocksView() {
+function StocksView({ wallet, balances, refreshBalances }) {
+  const [selected, setSelected] = useState(null);
+  const [amount, setAmount] = useState('1');
+  const [toAddr, setToAddr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const handleSend = async (stock) => {
+    if (!wallet) { alert('Connect wallet first'); return; }
+    if (!toAddr.trim() || !amount.trim()) return;
+    setBusy(true); setResult(null);
+    try {
+      const contract = new ethers.Contract(stock.token, ERC20_ABI, wallet.signer);
+      const decimals = await contract.decimals();
+      const amt = ethers.parseUnits(amount, decimals);
+      const tx = await contract.transfer(toAddr.trim(), amt);
+      await tx.wait();
+      if (refreshBalances) refreshBalances();
+      setResult({ ok: true, msg: `Sent ${amount} ${stock.ticker} successfully!` });
+    } catch (err) { setResult({ ok: false, msg: err.reason || err.message }); }
+    setBusy(false);
+  };
+
   return <>
     <div className="crumbs">
       <div className="path">Dashboard / <b>Stocks</b></div>
@@ -1249,8 +1271,9 @@ function StocksView() {
     <div className="stocks-grid">
       {STOCKS.map(s => {
         if (s.live) {
-          const url = RH_EXPLORER + s.token;
-          return <a key={s.ticker} className="stock-card" href={url} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none', color:'inherit'}}>
+          const isSelected = selected === s.ticker;
+          const bal = balances[s.ticker] || 0;
+          return <div key={s.ticker} className="stock-card" style={{cursor:'pointer', border: isSelected ? '2px solid var(--blue)' : undefined}} onClick={() => { setSelected(isSelected ? null : s.ticker); setResult(null); }}>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
               <div className="sc-ticker">{s.ticker}</div>
               <span style={{fontFamily:'var(--mono)', fontSize:'8px', letterSpacing:'.18em', textTransform:'uppercase', color:'var(--green)', border:'1px solid var(--green)', padding:'2px 6px'}}>Live</span>
@@ -1258,8 +1281,18 @@ function StocksView() {
             <div className="sc-name">{s.name}</div>
             <div className="sc-price">${s.price.toFixed(2)}</div>
             <div className={`sc-change ${s.change >= 0 ? 'up' : 'dn'}`}>{s.change >= 0 ? '\u25b2' : '\u25bc'} {s.change > 0 ? '+' : ''}{s.change}%</div>
-            <div style={{fontFamily:'var(--mono)', fontSize:'9px', letterSpacing:'.14em', color:'var(--blue)', marginTop:'10px', textTransform:'uppercase'}}>View on Explorer &#8599;</div>
-          </a>;
+            <div style={{fontFamily:'var(--mono)', fontSize:10, marginTop:8, color:'var(--ink-soft)'}}>Balance: <b>{bal.toFixed(4)}</b></div>
+            {isSelected && <div style={{marginTop:10, borderTop:'1px solid var(--rule)', paddingTop:10}} onClick={e => e.stopPropagation()}>
+              <div style={{fontFamily:'var(--mono)', fontSize:10, marginBottom:6, color:'var(--ink-soft)'}}>Send {s.ticker} to address:</div>
+              <input value={toAddr} onChange={e => setToAddr(e.target.value)} placeholder="0x..." style={{width:'100%', padding:'6px 8px', border:'1px solid var(--ink)', fontFamily:'var(--mono)', fontSize:11, background:'var(--paper)', marginBottom:6, boxSizing:'border-box'}} />
+              <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                <input value={amount} onChange={e => setAmount(e.target.value)} placeholder="Amount" style={{width:70, padding:'6px 8px', border:'1px solid var(--ink)', fontFamily:'var(--mono)', fontSize:11, background:'var(--paper)'}} />
+                <button className="btn primary" style={{fontSize:10, padding:'5px 14px'}} onClick={() => handleSend(s)} disabled={busy}>{busy ? '...' : 'Send'}</button>
+              </div>
+              {result && <div style={{fontFamily:'var(--mono)', fontSize:10, marginTop:6, color: result.ok ? 'var(--green)' : 'var(--red)'}}>{result.msg}</div>}
+              <a href={RH_EXPLORER + s.token} target="_blank" rel="noopener noreferrer" style={{fontFamily:'var(--mono)', fontSize:'9px', letterSpacing:'.14em', color:'var(--blue)', marginTop:8, display:'block', textTransform:'uppercase', textDecoration:'none'}}>View on Explorer &#8599;</a>
+            </div>}
+          </div>;
         }
         return <div key={s.ticker} className="stock-card" style={{opacity:0.4, cursor:'default', pointerEvents:'none'}}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
@@ -1814,7 +1847,7 @@ function App() {
     <main>
       {view === 'overview' && <OverviewView setView={setView} wallet={wallet} balances={balances} connectW={connectW} walletLoading={walletLoading} refreshBalances={refreshBalances}/>}
       {view === 'indices' && <IndicesView setView={setView} wallet={wallet} balances={balances} refreshBalances={refreshBalances}/>}
-      {view === 'stocks' && <StocksView/>}
+      {view === 'stocks' && <StocksView wallet={wallet} balances={balances} refreshBalances={refreshBalances}/>}
       {view === 'terminal' && <TerminalView wallet={wallet} balances={balances} refreshBalances={refreshBalances}/>}
       {view === 'portfolio' && <PortfolioView wallet={wallet} balances={balances} connectW={connectW} walletLoading={walletLoading}/>}
       {view === 'treasury' && <TreasuryView/>}

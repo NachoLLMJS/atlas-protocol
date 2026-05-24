@@ -1123,6 +1123,45 @@ function OverviewView({ setView, wallet, balances, connectW, walletLoading, refr
       </div>
     </div>
 
+    {/* ── My Indices (if creator) ── */}
+    {connected && (() => {
+      const myIndices = DEPLOYED_INDICES.filter(idx => idx.creator.toLowerCase() === wallet.address.toLowerCase());
+      if (myIndices.length === 0) return null;
+      const totalFeeEarned = myIndices.reduce((s, idx) => s + (balances[idx.symbol] || 0), 0);
+      return <div className="ov-panel" style={{marginTop:20}}>
+        <div className="ov-panel-head">
+          <h3>My Indices (Creator)</h3>
+          <span className="ov-link" onClick={() => setView('indices')}>Manage &#8599;</span>
+        </div>
+        <div className="ov-panel-body">
+          <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:14, marginBottom:14}}>
+            <div style={{padding:'12px 14px', border:'1px solid var(--rule)', background:'rgba(94,121,178,.03)'}}>
+              <div style={{fontFamily:'var(--mono)', fontSize:9, letterSpacing:'.2em', textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:4}}>My Indices</div>
+              <div style={{fontFamily:'var(--display)', fontSize:22, fontWeight:700}}>{myIndices.length}</div>
+            </div>
+            <div style={{padding:'12px 14px', border:'1px solid var(--rule)', background:'rgba(94,121,178,.03)'}}>
+              <div style={{fontFamily:'var(--mono)', fontSize:9, letterSpacing:'.2em', textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:4}}>Total Minted</div>
+              <div style={{fontFamily:'var(--display)', fontSize:22, fontWeight:700}}>{myIndices.reduce((s,i) => s + i.totalSupply, 0).toFixed(1)}</div>
+            </div>
+            <div style={{padding:'12px 14px', border:'1px solid var(--rule)', background:'rgba(94,121,178,.03)'}}>
+              <div style={{fontFamily:'var(--mono)', fontSize:9, letterSpacing:'.2em', textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:4}}>Fee Tokens Earned</div>
+              <div style={{fontFamily:'var(--display)', fontSize:22, fontWeight:700, color:'var(--green)'}}>{totalFeeEarned.toFixed(4)}</div>
+            </div>
+          </div>
+          {myIndices.map(idx => <div key={idx.address} className="ov-row" style={{cursor:'pointer', flexWrap:'wrap', gap:6}} onClick={() => setView('indices')}>
+            <span style={{fontFamily:'var(--display)', fontWeight:700, letterSpacing:'.06em', fontSize:14, width:120}}>{idx.name}</span>
+            <span style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--blue)', fontWeight:500, width:60}}>{idx.symbol}</span>
+            <span style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', flex:1}}>{idx.stocks.join(' \u00b7 ')}</span>
+            <span style={{fontFamily:'var(--mono)', fontSize:10, width:70, textAlign:'right'}}>Supply: {idx.totalSupply.toFixed(1)}</span>
+            <span style={{fontFamily:'var(--mono)', fontSize:10, width:50, textAlign:'right', color:'var(--green)'}}>{idx.feeBps/100}% fee</span>
+          </div>)}
+          <div style={{marginTop:10, fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-mute)', lineHeight:1.6}}>
+            As index creator you earn 50% of the fee on every mint. The other 50% goes to liquidity providers in the AtlasVault.
+          </div>
+        </div>
+      </div>;
+    })()}
+
     {/* ── Terminal + Create CTAs ── */}
     <div className="ov-cta-grid">
       <div className="ov-cta" onClick={() => setView('terminal')}>
@@ -1137,9 +1176,17 @@ function OverviewView({ setView, wallet, balances, connectW, walletLoading, refr
         <div style={{fontFamily:'var(--mono)', fontSize:9.5, letterSpacing:'.26em', textTransform:'uppercase', color:'var(--blue)', marginBottom:10}}>// Create</div>
         <div style={{fontFamily:'var(--display)', fontSize:22, fontWeight:700, letterSpacing:'.04em', marginBottom:6}}>New Index Fund</div>
         <p style={{fontFamily:'var(--sans)', fontSize:12.5, color:'var(--ink-soft)', lineHeight:1.5, margin:'0 0 14px'}}>
-          Bundle 2-4 tokenized stocks into a custom ERC-20 index. Set your fee and earn.
+          Bundle 2-5 tokenized stocks into a custom ERC-20 index. Set your fee and earn.
         </p>
         <span className="btn primary" style={{display:'inline-flex'}}>Create Index</span>
+      </div>
+      <div className="ov-cta" onClick={() => setView('liquidity')}>
+        <div style={{fontFamily:'var(--mono)', fontSize:9.5, letterSpacing:'.26em', textTransform:'uppercase', color:'var(--blue)', marginBottom:10}}>// Earn</div>
+        <div style={{fontFamily:'var(--display)', fontSize:22, fontWeight:700, letterSpacing:'.04em', marginBottom:6}}>Provide Liquidity</div>
+        <p style={{fontFamily:'var(--sans)', fontSize:12.5, color:'var(--ink-soft)', lineHeight:1.5, margin:'0 0 14px'}}>
+          Deposit stocks into the vault. Earn 50% of all index fees as a liquidity provider.
+        </p>
+        <span className="btn primary" style={{display:'inline-flex'}}>Deposit Stocks</span>
       </div>
     </div>
 

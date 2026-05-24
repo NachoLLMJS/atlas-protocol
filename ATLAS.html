@@ -581,8 +581,17 @@ function useLivePrices() {
   return { pricesLoaded, lastUpdate };
 }
 
-// ─── WALLET & CHAIN ───
-const ERC20_ABI = ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)', 'function transfer(address to, uint256 amount) returns (bool)', 'function symbol() view returns (string)'];
+// ─── CONTRACTS & CHAIN ───
+const FACTORY_ADDRESS = '0xfba93D3DE479Bcf6d4b1eFCeC317055F9253b269';
+
+const ERC20_ABI = ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)', 'function transfer(address to, uint256 amount) returns (bool)', 'function approve(address spender, uint256 amount) returns (bool)', 'function allowance(address owner, address spender) view returns (uint256)', 'function symbol() view returns (string)', 'function name() view returns (string)', 'function totalSupply() view returns (uint256)'];
+
+const INDEX_TOKEN_ABI = [...ERC20_ABI, 'function mint(uint256 amount)', 'function burn(uint256 amount)', 'function getStocks() view returns (address[])', 'function getWeights() view returns (uint256[])', 'function creator() view returns (address)', 'function feeBps() view returns (uint256)', 'function stockCount() view returns (uint256)', 'function stocks(uint256) view returns (address)', 'function weights(uint256) view returns (uint256)'];
+
+const FACTORY_ABI = ['function createIndex(string name, string symbol, address[] stocks, uint256[] weights, uint256 feeBps) returns (address)', 'function totalIndices() view returns (uint256)', 'function allIndices(uint256) view returns (address)', 'function getCreatorIndices(address creator) view returns (address[])', 'event IndexCreated(address indexed indexToken, string name, string symbol, address indexed creator, address[] stocks, uint256[] weights, uint256 feeBps)'];
+
+// Track deployed index tokens (loaded from factory on-chain)
+let DEPLOYED_INDICES = [];
 
 const RH_NETWORK = {
   chainId: typeof RH_CHAIN_ID_HEX !== 'undefined' ? RH_CHAIN_ID_HEX : '0xb626',
@@ -611,6 +620,39 @@ async function connectWallet() {
   } catch (err) { console.error('Wallet connection failed:', err); return null; }
 }
 
+async function loadDeployedIndices(provider) {
+  try {
+    const factory = new ethers.Contract(FACTORY_ADDRESS, FACTORY_ABI, provider);
+    const total = await factory.totalIndices();
+    const indices = [];
+    for (let i = 0; i < Number(total); i++) {
+      const addr = await factory.allIndices(i);
+      const token = new ethers.Contract(addr, INDEX_TOKEN_ABI, provider);
+      const [name, symbol, supply, creator, feeBps, stockAddrs, weightVals] = await Promise.all([
+        token.name(), token.symbol(), token.totalSupply(),
+        token.creator(), token.feeBps(),
+        token.getStocks(), token.getWeights(),
+      ]);
+      // Map stock addresses to tickers
+      const stockTickers = stockAddrs.map(a => {
+        const s = STOCKS.find(st => st.token && st.token.toLowerCase() === a.toLowerCase());
+        return s ? s.ticker : a.slice(0,8);
+      });
+      indices.push({
+        address: addr, name, symbol: '$' + symbol, ticker: '$' + symbol,
+        totalSupply: parseFloat(ethers.formatEther(supply)),
+        creator, feeBps: Number(feeBps),
+        stocks: stockTickers,
+        stockAddresses: [...stockAddrs],
+        weights: weightVals.map(w => Number(w)),
+        live: true, onChain: true,
+      });
+    }
+    DEPLOYED_INDICES = indices;
+    return indices;
+  } catch (err) { console.warn('Failed to load indices:', err); return []; }
+}
+
 async function fetchBalances(providerOrRpc, address) {
   const provider = typeof providerOrRpc === 'string'
     ? new ethers.JsonRpcProvider(providerOrRpc)
@@ -620,7 +662,7 @@ async function fetchBalances(providerOrRpc, address) {
   // Native RBH balance
   const nativeBal = await provider.getBalance(address);
   results['RBH'] = parseFloat(ethers.formatEther(nativeBal));
-  // ERC-20 balances
+  // ERC-20 stock balances
   await Promise.all(liveStocks.map(async (s) => {
     try {
       const c = new ethers.Contract(s.token, ERC20_ABI, provider);
@@ -628,6 +670,14 @@ async function fetchBalances(providerOrRpc, address) {
       const dec = await c.decimals();
       results[s.ticker] = parseFloat(ethers.formatUnits(bal, dec));
     } catch { results[s.ticker] = 0; }
+  }));
+  // Index token balances
+  await Promise.all(DEPLOYED_INDICES.map(async (idx) => {
+    try {
+      const c = new ethers.Contract(idx.address, ERC20_ABI, provider);
+      const bal = await c.balanceOf(address);
+      results[idx.symbol] = parseFloat(ethers.formatEther(bal));
+    } catch { results[idx.symbol] = 0; }
   }));
   return results;
 }
@@ -642,6 +692,7 @@ function useWallet() {
     const w = await connectWallet();
     if (w) {
       setWallet(w);
+      await loadDeployedIndices(w.provider);
       const bals = await fetchBalances(w.provider, w.address);
       setBalances(bals);
       // Listen for account/chain changes
@@ -839,18 +890,19 @@ function buildConfirmation(parsed) {
   }
 
   if (action === 'create_index' && data?.indexName && data?.indexStocks?.length >= 2) {
-    const id = `IDX-${String(INDICES.length + 1).padStart(3,'0')}`;
     const w = Math.floor(100 / data.indexStocks.length);
+    const symbol = data.indexTicker || data.indexName.replace(/\s+/g,'').slice(0,4).toUpperCase();
     return {
+      action: 'create_index', data: { ...data, symbol },
       preview: [
         { type:'agent', text: parsed.reply },
-        { type:'agent', text: `Index: "${data.indexName}"` },
+        { type:'agent', text: `Index: "${data.indexName}" ($${symbol})` },
         { type:'agent', text: `Composition: ${data.indexStocks.map(t => `${t} ${w}%`).join(' | ')}` },
         { type:'agent', text: `Fee: 0.3% per mint/redeem` },
+        { type:'agent', text: `This will deploy a real ERC-20 token on Robinhood Chain.` },
       ],
       onConfirm: [
-        { type:'agent', text: 'Deploying ERC-20 contract on Robinhood Chain...' },
-        { type:'success', text: `\u2713 Index ${id} "${data.indexName}" deployed successfully!` },
+        { type:'success', text: `\u2713 Index "$${symbol}" deployed on Robinhood Chain!` },
       ],
       onCancel: [
         { type:'error', text: 'Index creation cancelled.' },
@@ -1087,7 +1139,52 @@ function OverviewView({ setView, wallet, balances, connectW, walletLoading, refr
   </>;
 }
 
-function IndicesView({ setView }) {
+function IndicesView({ setView, wallet, balances, refreshBalances }) {
+  const [mintIdx, setMintIdx] = useState(null);
+  const [mintAmount, setMintAmount] = useState('1');
+  const [minting, setMinting] = useState(false);
+  const [mintResult, setMintResult] = useState(null);
+
+  const handleMint = async (idx) => {
+    if (!wallet) { alert('Connect wallet first'); return; }
+    setMinting(true); setMintResult(null);
+    try {
+      const amount = ethers.parseEther(mintAmount);
+      const indexContract = new ethers.Contract(idx.address, INDEX_TOKEN_ABI, wallet.signer);
+      // Approve each stock token first
+      for (let i = 0; i < idx.stockAddresses.length; i++) {
+        const stockToken = new ethers.Contract(idx.stockAddresses[i], ERC20_ABI, wallet.signer);
+        const dec = await stockToken.decimals();
+        let needed = (amount * BigInt(idx.weights[i])) / 10000n;
+        if (dec < 18) needed = needed / (10n ** BigInt(18 - Number(dec)));
+        const currentAllowance = await stockToken.allowance(wallet.address, idx.address);
+        if (currentAllowance < needed) {
+          const approveTx = await stockToken.approve(idx.address, needed);
+          await approveTx.wait();
+        }
+      }
+      const tx = await indexContract.mint(amount);
+      await tx.wait();
+      if (refreshBalances) refreshBalances();
+      setMintResult({ ok: true, msg: `Minted ${mintAmount} ${idx.symbol}!` });
+    } catch (err) { setMintResult({ ok: false, msg: err.reason || err.message }); }
+    setMinting(false);
+  };
+
+  const handleBurn = async (idx) => {
+    if (!wallet) { alert('Connect wallet first'); return; }
+    setMinting(true); setMintResult(null);
+    try {
+      const amount = ethers.parseEther(mintAmount);
+      const indexContract = new ethers.Contract(idx.address, INDEX_TOKEN_ABI, wallet.signer);
+      const tx = await indexContract.burn(amount);
+      await tx.wait();
+      if (refreshBalances) refreshBalances();
+      setMintResult({ ok: true, msg: `Burned ${mintAmount} ${idx.symbol}, stocks returned!` });
+    } catch (err) { setMintResult({ ok: false, msg: err.reason || err.message }); }
+    setMinting(false);
+  };
+
   return <>
     <div className="crumbs">
       <div className="path">Dashboard / <b>Index</b></div>
@@ -1095,10 +1192,53 @@ function IndicesView({ setView }) {
         <button className="btn primary" onClick={() => setView('create')}>Create New Index</button>
       </div>
     </div>
-    <div className="sec-title" style={{marginTop:18}}>
+
+    {/* On-chain indices */}
+    {DEPLOYED_INDICES.length > 0 && <>
+      <div className="sec-title" style={{marginTop:18}}>
+        <span className="kicker">On-Chain</span>
+        <h2>Deployed Index</h2>
+        <span className="ornament">&#10022; &middot; &#10022;</span>
+      </div>
+      <table className="indices">
+        <thead><tr><th>Name</th><th>Ticker</th><th>Stocks</th><th>Supply</th><th>Fee</th><th>Your Balance</th><th>Actions</th></tr></thead>
+        <tbody>
+          {DEPLOYED_INDICES.map(idx => <tr key={idx.address}>
+            <td className="idx-name">{idx.name}</td>
+            <td style={{fontFamily:'var(--mono)', fontSize:12, color:'var(--blue)', fontWeight:500}}>{idx.symbol}</td>
+            <td className="idx-stocks">{idx.stocks.join(' \u00b7 ')}</td>
+            <td style={{fontFamily:'var(--mono)', fontFeatureSettings:'"tnum"'}}>{idx.totalSupply.toFixed(2)}</td>
+            <td className="idx-fee">{idx.feeBps / 100}%</td>
+            <td style={{fontFamily:'var(--mono)', fontWeight:600}}>{(balances[idx.symbol] || 0).toFixed(4)}</td>
+            <td>
+              <button className="btn" style={{fontSize:10, padding:'4px 10px', marginRight:4}} onClick={() => setMintIdx(mintIdx === idx.address ? null : idx.address)}>
+                {mintIdx === idx.address ? 'Close' : 'Mint / Burn'}
+              </button>
+            </td>
+          </tr>)}
+        </tbody>
+      </table>
+      {mintIdx && (() => {
+        const idx = DEPLOYED_INDICES.find(i => i.address === mintIdx);
+        if (!idx) return null;
+        return <div style={{border:'1px solid var(--ink)', padding:16, marginTop:8, maxWidth:500, background:'rgba(94,121,178,.03)'}}>
+          <div style={{fontFamily:'var(--display)', fontWeight:600, fontSize:14, marginBottom:8}}>{idx.name} ({idx.symbol})</div>
+          <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', marginBottom:12, wordBreak:'break-all'}}>Contract: {idx.address}</div>
+          <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8}}>
+            <input value={mintAmount} onChange={e => setMintAmount(e.target.value)} style={{width:80, padding:'6px 10px', border:'1px solid var(--ink)', fontFamily:'var(--mono)', fontSize:13, background:'var(--paper)'}} />
+            <button className="btn primary" style={{fontSize:10, padding:'6px 14px'}} onClick={() => handleMint(idx)} disabled={minting}>{minting ? '...' : 'Mint'}</button>
+            <button className="btn" style={{fontSize:10, padding:'6px 14px'}} onClick={() => handleBurn(idx)} disabled={minting}>{minting ? '...' : 'Burn'}</button>
+          </div>
+          <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-mute)'}}>Mint: deposit stocks proportionally. Burn: receive stocks back.</div>
+          {mintResult && <div style={{fontFamily:'var(--mono)', fontSize:11, marginTop:8, color: mintResult.ok ? 'var(--green)' : 'var(--red)'}}>{mintResult.msg}</div>}
+        </div>;
+      })()}
+    </>}
+
+    {/* Example/demo indices */}
+    <div className="sec-title" style={{marginTop:28}}>
       <span className="kicker">&sect; 03</span>
-      <h2>Live Index</h2>
-      <span className="ornament">&#10022; &middot; &#10022;</span>
+      <h2>{DEPLOYED_INDICES.length > 0 ? 'Example Index' : 'Live Index'}</h2>
     </div>
     <table className="indices">
       <thead><tr><th>ID</th><th>Index Name</th><th>Ticker</th><th>Composition</th><th>TVL</th><th>7d</th><th>Fee</th><th>Status</th></tr></thead>
@@ -1273,6 +1413,44 @@ function TerminalView({ wallet, balances, refreshBalances }) {
       }
     }
 
+    // Real on-chain create index
+    if (act === 'create_index' && wallet && d?.indexStocks?.length >= 2) {
+      setPendingConfirm(null);
+      setMessages(prev => {
+        const without = prev.filter(m => m.type !== 'confirm');
+        return [...without, { type:'system', text: 'Deploying index token on Robinhood Chain...' }];
+      });
+      try {
+        const stockAddrs = d.indexStocks.map(t => {
+          const s = STOCKS.find(st => st.ticker === t.toUpperCase());
+          return s?.token;
+        }).filter(Boolean);
+        if (stockAddrs.length < 2) throw new Error('Need at least 2 valid stock tickers');
+        const equalW = Math.floor(10000 / stockAddrs.length);
+        const weights = stockAddrs.map((_, i) => i === 0 ? 10000 - equalW * (stockAddrs.length - 1) : equalW);
+        const factory = new ethers.Contract(FACTORY_ADDRESS, FACTORY_ABI, wallet.signer);
+        const tx = await factory.createIndex(d.indexName, d.symbol || 'IDX', stockAddrs, weights, 30);
+        setMessages(prev => [...prev, { type:'system', text: `Tx submitted: ${tx.hash.slice(0,14)}...` }]);
+        const receipt = await tx.wait();
+        const event = receipt.logs.find(l => { try { return factory.interface.parseLog(l)?.name === 'IndexCreated'; } catch { return false; } });
+        const indexAddr = event ? factory.interface.parseLog(event).args[0] : '';
+        await loadDeployedIndices(wallet.provider);
+        if (refreshBalances) refreshBalances();
+        const msgs = [
+          { type:'success', text: `\u2713 Index "$${d.symbol}" deployed on Robinhood Chain!` },
+          { type:'agent', text: `Contract: ${indexAddr}` },
+        ];
+        setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+        setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+        return;
+      } catch (err) {
+        const msgs = [{ type:'error', text: `Deploy failed: ${err.reason || err.message}` }];
+        setChatHistory(prev => [...prev, { role:'user', content:'Confirmed.' }, { role:'assistant', content: msgs.map(m=>m.text).join(' ') }]);
+        setMessages(prev => [...prev, ...msgs, { type:'spacer' }]);
+        return;
+      }
+    }
+
     // Fallback: non-chain confirmations
     const msgs = pendingConfirm.onConfirm;
     setPendingConfirm(null);
@@ -1346,11 +1524,16 @@ function TerminalView({ wallet, balances, refreshBalances }) {
 function PortfolioView({ wallet, balances, connectW, walletLoading }) {
   const connected = !!wallet;
   const liveStocks = STOCKS.filter(s => s.live);
-  const holdings = connected ? liveStocks.filter(s => (balances[s.ticker] || 0) > 0).map(s => ({
+  const stockHoldings = connected ? liveStocks.filter(s => (balances[s.ticker] || 0) > 0).map(s => ({
     asset: s.ticker, type: 'Stock', qty: (balances[s.ticker] || 0).toFixed(4),
     value: ((balances[s.ticker] || 0) * s.price).toFixed(2),
     change: s.change, up: s.change >= 0,
   })) : [];
+  const indexHoldings = connected ? DEPLOYED_INDICES.filter(idx => (balances[idx.symbol] || 0) > 0).map(idx => ({
+    asset: idx.symbol, type: 'Index', qty: (balances[idx.symbol] || 0).toFixed(4),
+    value: '0.00', change: 0, up: true,
+  })) : [];
+  const holdings = [...stockHoldings, ...indexHoldings];
   const totalValue = holdings.reduce((s, h) => s + parseFloat(h.value), 0);
   return <>
     <div className="crumbs"><div className="path">Dashboard / <b>Portfolio</b></div></div>
@@ -1423,35 +1606,104 @@ function TreasuryView() {
   </>;
 }
 
-function CreateIndexView({ setView }) {
+function CreateIndexView({ setView, wallet }) {
+  const liveStocks = STOCKS.filter(s => s.live && s.token);
+  const [idxName, setIdxName] = useState('');
+  const [idxSymbol, setIdxSymbol] = useState('');
+  const [selected, setSelected] = useState([]);
+  const [feePct, setFeePct] = useState('0.3');
+  const [deploying, setDeploying] = useState(false);
+  const [result, setResult] = useState(null);
+  const labelStyle = {fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.28em', textTransform:'uppercase', color:'var(--ink-soft)', display:'block', marginBottom:8};
+  const inputStyle = {width:'100%', padding:'10px 14px', border:'1px solid var(--ink)', background:'var(--paper)', fontFamily:'var(--display)', fontSize:18, letterSpacing:'.06em', color:'var(--ink)', outline:'none'};
+
+  const toggleStock = (ticker) => {
+    setSelected(prev => prev.includes(ticker) ? prev.filter(t => t !== ticker) : prev.length < 5 ? [...prev, ticker] : prev);
+  };
+
+  const deploy = async () => {
+    if (!wallet) { alert('Connect your wallet first'); return; }
+    if (!idxName || !idxSymbol || selected.length < 2) { alert('Fill name, symbol, and select 2-5 stocks'); return; }
+    setDeploying(true);
+    try {
+      const stockAddrs = selected.map(t => STOCKS.find(s => s.ticker === t).token);
+      const equalWeight = Math.floor(10000 / selected.length);
+      const weightArr = selected.map((_, i) => i === 0 ? 10000 - equalWeight * (selected.length - 1) : equalWeight);
+      const feeBps = Math.round(parseFloat(feePct) * 100);
+      const factory = new ethers.Contract(FACTORY_ADDRESS, FACTORY_ABI, wallet.signer);
+      const tx = await factory.createIndex(idxName, idxSymbol.toUpperCase(), stockAddrs, weightArr, feeBps);
+      setResult({ status: 'pending', tx: tx.hash });
+      const receipt = await tx.wait();
+      // Get index address from event
+      const event = receipt.logs.find(l => {
+        try { return factory.interface.parseLog(l)?.name === 'IndexCreated'; } catch { return false; }
+      });
+      const indexAddr = event ? factory.interface.parseLog(event).args[0] : 'Check explorer';
+      // Reload indices
+      await loadDeployedIndices(wallet.provider);
+      setResult({ status: 'success', tx: tx.hash, address: indexAddr });
+    } catch (err) {
+      setResult({ status: 'error', message: err.reason || err.message });
+    }
+    setDeploying(false);
+  };
+
   return <>
     <div className="crumbs"><div className="path">Dashboard / <b>Create Index</b></div></div>
     <div className="sec-title" style={{marginTop:18}}><h2>Create New Index</h2><span className="ornament">&#10022; &#10022; &#10022;</span></div>
     <p style={{fontFamily:'var(--sans)', fontSize:14, color:'var(--ink-soft)', lineHeight:1.6, maxWidth:600, marginBottom:24}}>
-      Use the <strong style={{cursor:'pointer', color:'var(--blue)'}} onClick={() => setView('terminal')}>AI Terminal</strong> to create an index with natural language, or fill in the form below.
+      Deploy a real ERC-20 index token on Robinhood Chain. Select 2-5 stocks, set your fee, and deploy.
     </p>
-    <div style={{border:'1px solid var(--ink)', padding:28, maxWidth:600, background:'var(--paper)'}}>
-      <div style={{marginBottom:20}}>
-        <label style={{fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.28em', textTransform:'uppercase', color:'var(--ink-soft)', display:'block', marginBottom:8}}>Index Name</label>
-        <input style={{width:'100%', padding:'10px 14px', border:'1px solid var(--ink)', background:'var(--paper)', fontFamily:'var(--display)', fontSize:18, letterSpacing:'.06em', color:'var(--ink)', outline:'none'}} placeholder="e.g. Tech Titans" />
-      </div>
-      <div style={{marginBottom:20}}>
-        <label style={{fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.28em', textTransform:'uppercase', color:'var(--ink-soft)', display:'block', marginBottom:8}}>Select Stocks (4)</label>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:8}}>
-          {['AAPL','MSFT','GOOG','AMZN','NVDA','TSLA','META','NFLX'].map(t =>
-            <div key={t} style={{border:'1px solid var(--rule)', padding:'10px', textAlign:'center', cursor:'pointer', fontFamily:'var(--display)', fontSize:14, fontWeight:600, letterSpacing:'.1em', transition:'all .15s'}}
-              onMouseEnter={e => { e.target.style.borderColor = 'var(--ink)'; e.target.style.boxShadow = '2px 2px 0 var(--ink-2)'; }}
-              onMouseLeave={e => { e.target.style.borderColor = 'var(--rule)'; e.target.style.boxShadow = 'none'; }}>
-              {t}
-            </div>
-          )}
+    <div style={{border:'1px solid var(--ink)', padding:28, maxWidth:620, background:'var(--paper)', clipPath:'polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%)'}}>
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20}}>
+        <div>
+          <label style={labelStyle}>Index Name</label>
+          <input style={inputStyle} placeholder="e.g. Tech Titans" value={idxName} onChange={e => setIdxName(e.target.value)} />
+        </div>
+        <div>
+          <label style={labelStyle}>Ticker Symbol</label>
+          <input style={{...inputStyle, fontFamily:'var(--mono)'}} placeholder="e.g. TECH" value={idxSymbol} onChange={e => setIdxSymbol(e.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,5))} />
         </div>
       </div>
       <div style={{marginBottom:20}}>
-        <label style={{fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.28em', textTransform:'uppercase', color:'var(--ink-soft)', display:'block', marginBottom:8}}>Creator Fee</label>
-        <input style={{width:120, padding:'10px 14px', border:'1px solid var(--ink)', background:'var(--paper)', fontFamily:'var(--mono)', fontSize:14, color:'var(--ink)', outline:'none'}} placeholder="0.3%" />
+        <label style={labelStyle}>Select Stocks (2-5) {selected.length > 0 && `· ${selected.length} selected`}</label>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:8}}>
+          {liveStocks.map(s => {
+            const active = selected.includes(s.ticker);
+            return <div key={s.ticker} onClick={() => toggleStock(s.ticker)} style={{
+              border: active ? '2px solid var(--ink)' : '1px solid var(--rule)',
+              padding:'12px 8px', textAlign:'center', cursor:'pointer', transition:'all .15s',
+              background: active ? 'rgba(94,121,178,.1)' : 'transparent',
+              boxShadow: active ? '3px 3px 0 var(--ink-2)' : 'none',
+            }}>
+              <div style={{fontFamily:'var(--display)', fontSize:15, fontWeight:600, letterSpacing:'.1em'}}>{s.ticker}</div>
+              <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-soft)', marginTop:4}}>${s.price.toFixed(0)}</div>
+              {active && <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--blue)', marginTop:4}}>{Math.floor(10000/selected.length)/100}%</div>}
+            </div>;
+          })}
+        </div>
       </div>
-      <button className="btn primary" style={{padding:'12px 24px', fontSize:12}}>Deploy Index on Robinhood Chain</button>
+      <div style={{marginBottom:24}}>
+        <label style={labelStyle}>Creator Fee (%)</label>
+        <input style={{...inputStyle, width:120, fontFamily:'var(--mono)', fontSize:14}} value={feePct}
+          onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v) && parseFloat(v || '0') <= 5) setFeePct(v); }} />
+      </div>
+
+      {result?.status === 'success' ? <div style={{border:'1px solid var(--green)', padding:16, marginBottom:16, background:'rgba(59,140,110,.06)'}}>
+        <div style={{fontFamily:'var(--display)', fontWeight:600, fontSize:16, color:'var(--green)', marginBottom:8}}>Index Deployed Successfully</div>
+        <div style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--ink-soft)', wordBreak:'break-all'}}>
+          Address: <a href={RH_EXPLORER.replace('/token/','/address/') + result.address} target="_blank" style={{color:'var(--blue)'}}>{result.address}</a>
+        </div>
+        <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-mute)', marginTop:4}}>Tx: {result.tx}</div>
+      </div> : result?.status === 'error' ? <div style={{border:'1px solid var(--red)', padding:16, marginBottom:16}}>
+        <div style={{fontFamily:'var(--mono)', fontSize:12, color:'var(--red)'}}>{result.message}</div>
+      </div> : result?.status === 'pending' ? <div style={{border:'1px solid var(--blue)', padding:16, marginBottom:16}}>
+        <div style={{fontFamily:'var(--mono)', fontSize:12, color:'var(--blue)'}}>Transaction pending... {result.tx.slice(0,14)}...</div>
+      </div> : null}
+
+      <button className="btn primary" style={{padding:'12px 24px', fontSize:12}} onClick={deploy} disabled={deploying || !wallet}>
+        {!wallet ? 'Connect Wallet First' : deploying ? 'Deploying...' : `Deploy $${idxSymbol || 'INDEX'} on Robinhood Chain`}
+      </button>
     </div>
   </>;
 }
@@ -1579,7 +1831,7 @@ function App() {
 
     <main>
       {view === 'overview' && <OverviewView setView={setView} wallet={wallet} balances={balances} connectW={connectW} walletLoading={walletLoading} refreshBalances={refreshBalances}/>}
-      {view === 'indices' && <IndicesView setView={setView}/>}
+      {view === 'indices' && <IndicesView setView={setView} wallet={wallet} balances={balances} refreshBalances={refreshBalances}/>}
       {view === 'stocks' && <StocksView/>}
       {view === 'terminal' && <TerminalView wallet={wallet} balances={balances} refreshBalances={refreshBalances}/>}
       {view === 'portfolio' && <PortfolioView wallet={wallet} balances={balances} connectW={connectW} walletLoading={walletLoading}/>}

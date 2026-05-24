@@ -1,0 +1,7 @@
+{
+  "network": "robinhood-testnet",
+  "chainId": 46630,
+  "deployer": "0x113Ee1c220096f08Ad4da2b50887745E644F5117",
+  "IndexFactory": "0xfba93D3DE479Bcf6d4b1eFCeC317055F9253b269",
+  "deployedAt": "2026-05-24T15:36:16.893Z"
+}

@@ -518,7 +518,7 @@ const { useState, useRef, useEffect } = React;
 const RH_EXPLORER = 'https://explorer.testnet.chain.robinhood.com/token/';
 
 // Official Robinhood Chain Testnet stock tokens (from faucet) + coming soon
-const STOCKS = [
+let STOCKS = [
   // Live on testnet (official faucet tokens)
   { ticker:'TSLA', name:'Tesla Inc.', price:187.34, change:-1.12, token:'0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E', live:true },
   { ticker:'AMZN', name:'Amazon.com Inc.', price:191.75, change:2.11, token:'0x5884aD2f920c162CFBbACc88C9C51AA75eC09E02', live:true },
@@ -544,6 +544,42 @@ const INDICES = [
   { id:'IDX-003', name:'AI Leaders', ticker:'$AILD', stocks:['AMD','PLTR','AMZN'], weights:[34,33,33], tvl:'$142K', perf:5.4, fee:0.3, status:'hot' },
   { id:'IDX-004', name:'Full Market', ticker:'$FULL', stocks:['TSLA','AMZN','NFLX','AMD','PLTR'], weights:[20,20,20,20,20], tvl:'$98K', perf:3.1, fee:0.4, status:'new' },
 ];
+
+// ─── LIVE STOCK PRICES ───
+const PRICES_API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? '/api/prices'
+  : (window.location.origin + '/api/prices');
+
+async function fetchLivePrices() {
+  try {
+    const tickers = STOCKS.map(s => s.ticker).join(',');
+    const res = await fetch(PRICES_API + '?symbols=' + tickers);
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
+    STOCKS = STOCKS.map(s => {
+      const p = data[s.ticker];
+      if (p && p.price) return { ...s, price: p.price, change: p.change };
+      return s;
+    });
+    return true;
+  } catch (err) {
+    console.warn('Live prices unavailable, using defaults:', err.message);
+    return false;
+  }
+}
+
+function useLivePrices() {
+  const [pricesLoaded, setPricesLoaded] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(null);
+  useEffect(() => {
+    fetchLivePrices().then(ok => { setPricesLoaded(ok); if (ok) setLastUpdate(new Date()); });
+    const interval = setInterval(() => {
+      fetchLivePrices().then(ok => { setPricesLoaded(ok); if (ok) setLastUpdate(new Date()); });
+    }, 30000); // refresh every 30s
+    return () => clearInterval(interval);
+  }, []);
+  return { pricesLoaded, lastUpdate };
+}
 
 // ─── WALLET & CHAIN ───
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)', 'function transfer(address to, uint256 amount) returns (bool)', 'function symbol() view returns (string)'];
@@ -1470,6 +1506,10 @@ function App() {
   const hashView = window.location.hash.replace('#','');
   const [view, setView] = useState(validViews.includes(hashView) ? hashView : 'overview');
   const { wallet, balances, loading: walletLoading, connect: connectW, refresh: refreshBalances } = useWallet();
+  const { pricesLoaded, lastUpdate } = useLivePrices();
+  // Force re-render when prices update
+  const [, forceUpdate] = useState(0);
+  useEffect(() => { if (lastUpdate) forceUpdate(n => n + 1); }, [lastUpdate]);
 
   useEffect(() => {
     function onHash(){ const v = window.location.hash.replace('#',''); if(validViews.includes(v)) setView(v); }
@@ -1532,6 +1572,7 @@ function App() {
       <div className="nav-footer">
         <div><span className="k">Network</span> &nbsp;{wallet ? <span style={{color:'var(--green)'}}>Robinhood Chain</span> : 'Robinhood Chain'}</div>
         <div><span className="k">Protocol</span> &nbsp;ATLAS Index v1</div>
+        <div><span className="k">Prices</span> &nbsp;{pricesLoaded ? <span style={{color:'var(--green)'}}>Live</span> : 'Cached'}</div>
         <div><span className="k">Build</span> &nbsp;<b>v0.1.0 &middot; testnet</b></div>
       </div>
     </aside>

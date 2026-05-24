@@ -1189,67 +1189,50 @@ function IndicesView({ setView, wallet, balances, refreshBalances }) {
       </div>
     </div>
 
-    {/* On-chain indices */}
-    {DEPLOYED_INDICES.length > 0 && <>
-      <div className="sec-title" style={{marginTop:18}}>
-        <span className="kicker">On-Chain</span>
-        <h2>Deployed Index</h2>
-        <span className="ornament">&#10022; &middot; &#10022;</span>
-      </div>
+    {/* All indices from on-chain */}
+    <div className="sec-title" style={{marginTop:18}}>
+      <span className="kicker">On-Chain</span>
+      <h2>Deployed Indices</h2>
+      <span className="ornament">&#10022; &middot; &#10022;</span>
+    </div>
+    {DEPLOYED_INDICES.length > 0 ? <>
       <table className="indices">
-        <thead><tr><th>Name</th><th>Ticker</th><th>Stocks</th><th>Supply</th><th>Fee</th><th>Your Balance</th><th>Actions</th></tr></thead>
+        <thead><tr><th>#</th><th>Name</th><th>Ticker</th><th>Stocks</th><th>Supply</th><th>Fee</th><th>Your Balance</th><th>Actions</th></tr></thead>
         <tbody>
-          {DEPLOYED_INDICES.map(idx => <tr key={idx.address}>
-            <td className="idx-name">{idx.name}</td>
-            <td style={{fontFamily:'var(--mono)', fontSize:12, color:'var(--blue)', fontWeight:500}}>{idx.symbol}</td>
-            <td className="idx-stocks">{idx.stocks.join(' \u00b7 ')}</td>
-            <td style={{fontFamily:'var(--mono)', fontFeatureSettings:'"tnum"'}}>{idx.totalSupply.toFixed(2)}</td>
-            <td className="idx-fee">{idx.feeBps / 100}%</td>
-            <td style={{fontFamily:'var(--mono)', fontWeight:600}}>{(balances[idx.symbol] || 0).toFixed(4)}</td>
-            <td>
-              <button className="btn" style={{fontSize:10, padding:'4px 10px', marginRight:4}} onClick={() => setMintIdx(mintIdx === idx.address ? null : idx.address)}>
-                {mintIdx === idx.address ? 'Close' : 'Mint / Burn'}
-              </button>
-            </td>
-          </tr>)}
+          {DEPLOYED_INDICES.map((idx, i) => <React.Fragment key={idx.address}>
+            <tr style={{cursor:'pointer'}} onClick={() => setMintIdx(mintIdx === idx.address ? null : idx.address)}>
+              <td className="idx-id">{i + 1}</td>
+              <td className="idx-name">{idx.name}</td>
+              <td style={{fontFamily:'var(--mono)', fontSize:12, color:'var(--blue)', fontWeight:500}}>{idx.symbol}</td>
+              <td className="idx-stocks">{idx.stocks.join(' \u00b7 ')}</td>
+              <td style={{fontFamily:'var(--mono)', fontFeatureSettings:'"tnum"'}}>{idx.totalSupply.toFixed(2)}</td>
+              <td className="idx-fee">{(idx.feeBps / 100).toFixed(1)}%</td>
+              <td style={{fontFamily:'var(--mono)', fontWeight:600}}>{(balances[idx.symbol] || 0).toFixed(4)}</td>
+              <td>
+                <button className="btn primary" style={{fontSize:10, padding:'4px 12px'}}>
+                  {mintIdx === idx.address ? 'Close' : 'Buy / Sell'}
+                </button>
+              </td>
+            </tr>
+            {mintIdx === idx.address && <tr><td colSpan="8" style={{padding:0, border:'none'}}>
+              <div style={{border:'1px solid var(--ink)', padding:16, background:'rgba(94,121,178,.05)'}}>
+                <div style={{fontFamily:'var(--display)', fontWeight:600, fontSize:14, marginBottom:4}}>{idx.name} ({idx.symbol})</div>
+                <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', marginBottom:4}}>Creator: {idx.creator.slice(0,6)}...{idx.creator.slice(-4)}</div>
+                <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', marginBottom:12, wordBreak:'break-all'}}>Contract: {idx.address}</div>
+                <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8}}>
+                  <label style={{fontFamily:'var(--mono)', fontSize:11}}>Amount:</label>
+                  <input value={mintAmount} onChange={e => setMintAmount(e.target.value)} placeholder="1.0" style={{width:100, padding:'6px 10px', border:'1px solid var(--ink)', fontFamily:'var(--mono)', fontSize:13, background:'var(--paper)'}} />
+                  <button className="btn primary" style={{fontSize:11, padding:'6px 16px'}} onClick={(e) => { e.stopPropagation(); handleMint(idx); }} disabled={minting}>{minting ? 'Processing...' : 'Mint (Buy)'}</button>
+                  <button className="btn" style={{fontSize:11, padding:'6px 16px'}} onClick={(e) => { e.stopPropagation(); handleBurn(idx); }} disabled={minting}>{minting ? 'Processing...' : 'Burn (Sell)'}</button>
+                </div>
+                <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-mute)'}}>Mint: approve &amp; deposit underlying stocks proportionally to receive index tokens. Burn: return index tokens to receive stocks back.</div>
+                {mintResult && <div style={{fontFamily:'var(--mono)', fontSize:11, marginTop:8, padding:'6px 10px', background: mintResult.ok ? 'rgba(0,180,0,.08)' : 'rgba(180,0,0,.08)', color: mintResult.ok ? 'var(--green)' : 'var(--red)'}}>{mintResult.msg}</div>}
+              </div>
+            </td></tr>}
+          </React.Fragment>)}
         </tbody>
       </table>
-      {mintIdx && (() => {
-        const idx = DEPLOYED_INDICES.find(i => i.address === mintIdx);
-        if (!idx) return null;
-        return <div style={{border:'1px solid var(--ink)', padding:16, marginTop:8, maxWidth:500, background:'rgba(94,121,178,.03)'}}>
-          <div style={{fontFamily:'var(--display)', fontWeight:600, fontSize:14, marginBottom:8}}>{idx.name} ({idx.symbol})</div>
-          <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', marginBottom:12, wordBreak:'break-all'}}>Contract: {idx.address}</div>
-          <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8}}>
-            <input value={mintAmount} onChange={e => setMintAmount(e.target.value)} style={{width:80, padding:'6px 10px', border:'1px solid var(--ink)', fontFamily:'var(--mono)', fontSize:13, background:'var(--paper)'}} />
-            <button className="btn primary" style={{fontSize:10, padding:'6px 14px'}} onClick={() => handleMint(idx)} disabled={minting}>{minting ? '...' : 'Mint'}</button>
-            <button className="btn" style={{fontSize:10, padding:'6px 14px'}} onClick={() => handleBurn(idx)} disabled={minting}>{minting ? '...' : 'Burn'}</button>
-          </div>
-          <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-mute)'}}>Mint: deposit stocks proportionally. Burn: receive stocks back.</div>
-          {mintResult && <div style={{fontFamily:'var(--mono)', fontSize:11, marginTop:8, color: mintResult.ok ? 'var(--green)' : 'var(--red)'}}>{mintResult.msg}</div>}
-        </div>;
-      })()}
-    </>}
-
-    {/* All indices from on-chain */}
-    <div className="sec-title" style={{marginTop:28}}>
-      <span className="kicker">&sect; 03</span>
-      <h2>All Indices</h2>
-    </div>
-    {DEPLOYED_INDICES.length > 0 ? <table className="indices">
-      <thead><tr><th>#</th><th>Index Name</th><th>Ticker</th><th>Stocks</th><th>Supply</th><th>Fee</th><th>Creator</th></tr></thead>
-      <tbody>
-        {DEPLOYED_INDICES.map((idx, i) => <tr key={idx.address}>
-          <td className="idx-id">{i + 1}</td>
-          <td className="idx-name">{idx.name}</td>
-          <td style={{fontFamily:'var(--mono)', fontSize:12, color:'var(--blue)', fontWeight:500}}>{idx.symbol}</td>
-          <td className="idx-stocks">{idx.stocks.join(' \u00b7 ')}</td>
-          <td className="idx-tvl">{idx.totalSupply.toFixed(2)}</td>
-          <td className="idx-fee">{(idx.feeBps / 100).toFixed(1)}%</td>
-          <td style={{fontFamily:'var(--mono)', fontSize:11}}>{idx.creator.slice(0,6)}...{idx.creator.slice(-4)}</td>
-        </tr>)}
-      </tbody>
-    </table> : <div style={{padding:'32px 0', textAlign:'center', color:'var(--dim)', fontSize:14}}>No indices deployed yet. Create your first index above!</div>}
+    </> : <div style={{padding:'32px 0', textAlign:'center', color:'var(--dim)', fontSize:14}}>No indices deployed yet. Create your first index above!</div>}
   </>;
 }
 

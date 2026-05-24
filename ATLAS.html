@@ -1,0 +1,1412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ATLAS · Stock Index Protocol</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+<script src="config.js"></script>
+
+<style>
+  :root{
+    --paper: #F1EEE7;
+    --paper-2: #EAE5DA;
+    --paper-3: #DED7C8;
+    --ink: #1D2A44;
+    --ink-2: #223A66;
+    --ink-soft: #4A5775;
+    --ink-mute: #7C84A0;
+    --rule: #C9BFA8;
+    --rule-soft: #D8D0BC;
+    --blue: #5E79B2;
+    --blue-2: #6B84B8;
+    --blue-mist: #B8C8E8;
+    --blue-veil: #D7E1F2;
+    --ochre: #8A6B33;
+    --green: #3B8C6E;
+    --red: #9E3424;
+    --serif: "Cinzel", "IBM Plex Serif", Georgia, serif;
+    --display: "Cinzel", Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+    --sans: "IBM Plex Sans", system-ui, sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background: var(--paper); color: var(--ink); font-family: var(--sans); }
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(1200px 800px at 80% -10%, rgba(94,121,178,.06), transparent 60%),
+      radial-gradient(1000px 700px at -5% 110%, rgba(184,200,232,.10), transparent 60%),
+      var(--paper);
+    position:relative;
+  }
+  body::before{
+    content:""; position:fixed; inset:0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.11  0 0 0 0 0.16  0 0 0 0 0.27  0 0 0 0.18 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.55'/></svg>");
+    mix-blend-mode: multiply; opacity:.35; pointer-events:none; z-index:1;
+  }
+  body::after{
+    content:""; position:fixed; inset:0;
+    background-image:
+      repeating-linear-gradient(91deg, transparent 0 80px, rgba(34,58,102,.025) 80px 81px),
+      repeating-linear-gradient(178deg, transparent 0 140px, rgba(34,58,102,.02) 140px 141px);
+    pointer-events:none; z-index:1;
+  }
+  .app{ position:relative; z-index:2; display:grid; grid-template-columns: 232px 1fr; min-height:100vh; }
+  .app.has-rail{ grid-template-columns: 232px 1fr 320px; }
+
+  /* ============ SIDEBAR ============ */
+  aside.nav{
+    border-right: 1px solid var(--rule); padding: 22px 18px 22px 22px;
+    background: linear-gradient(180deg, rgba(94,121,178,.04), transparent 30%), var(--paper);
+    display:flex; flex-direction:column; gap:22px; position:relative;
+  }
+  aside.nav::after{
+    content:""; position:absolute; right:-1px; top:24px; bottom:24px; width:1px;
+    background: linear-gradient(180deg, transparent, var(--rule) 8%, var(--rule) 92%, transparent);
+  }
+  .brand{ display:flex; align-items:flex-start; gap:12px; padding-bottom:18px; border-bottom:1px solid var(--rule); }
+  .brand-seal{
+    width:48px; height:48px; border:1.5px solid var(--ink); border-radius:50%;
+    display:grid; place-items:center; color:var(--ink); position:relative; background: var(--paper);
+  }
+  .brand-seal::before{ content:""; position:absolute; inset:3px; border:1px solid var(--ink); border-radius:50%; }
+  .brand-seal svg{ width:26px; height:26px; }
+  .brand-name{ font-family:var(--display); font-weight:600; font-size:20px; letter-spacing:.18em; line-height:1; margin-top:2px;}
+  .brand-sub{ font-family:var(--mono); font-size:9.5px; letter-spacing:.22em; color:var(--ink-soft); text-transform:uppercase; margin-top:8px;}
+
+  .agent-status{
+    border:1px solid var(--rule); padding:12px; display:flex; flex-direction:column; gap:6px;
+    background: rgba(184,200,232,.18); position:relative;
+  }
+  .agent-status::before{
+    content:"※"; position:absolute; top:-9px; left:10px; background:var(--paper); padding:0 6px;
+    font-size:11px; color:var(--ink-soft);
+  }
+  .agent-row{ display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink); }
+  .agent-dot{ width:7px; height:7px; border-radius:50%; background: var(--green); position:relative; }
+  .agent-dot::after{ content:""; position:absolute; inset:-4px; border-radius:50%; border:1px solid var(--green); opacity:.4; animation: pulse 2.4s ease-out infinite;}
+  @keyframes pulse{ 0%{transform:scale(.6); opacity:.6;} 100%{transform:scale(1.6); opacity:0;} }
+  .agent-mode{ font-family:var(--mono); font-size:9.5px; letter-spacing:.2em; color:var(--ink-soft); }
+
+  nav.menu{ display:flex; flex-direction:column; gap:2px; }
+  .menu-label{
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.24em; color:var(--ink-mute);
+    text-transform:uppercase; margin: 6px 4px 8px; display:flex; align-items:center; gap:8px;
+  }
+  .menu-label::after{ content:""; flex:1; height:1px; background: var(--rule); }
+  .menu-item{
+    display:flex; align-items:center; gap:10px; padding:9px 10px; cursor:pointer;
+    font-family:var(--mono); font-size:11px; letter-spacing:.18em; color:var(--ink-soft);
+    text-transform:uppercase; border:1px solid transparent; transition: all .15s ease; position:relative;
+  }
+  .menu-item .num{ font-family:var(--mono); font-size:9.5px; color:var(--ink-mute); width:22px; }
+  .menu-item:hover{ color:var(--ink); background: rgba(94,121,178,.08); }
+  .menu-item.active{
+    color:var(--ink); background: var(--paper); border:1px solid var(--ink); box-shadow: 3px 3px 0 var(--ink-2);
+  }
+  .menu-item.active::before{ content:"▸"; position:absolute; left:-14px; color:var(--ink); }
+
+  .nav-footer{ margin-top:auto; padding-top:16px; border-top:1px solid var(--rule); font-family:var(--mono); font-size:9.5px; color:var(--ink-soft); letter-spacing:.18em; line-height:1.7; }
+  .nav-footer .k{ color:var(--ink-mute); }
+  .nav-footer b{ color:var(--ink); font-weight:500; }
+
+  /* ============ MAIN ============ */
+  main{ padding: 26px 32px 60px; min-width:0; overflow-y:auto; }
+  .crumbs{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; }
+  .crumbs .path{ font-family:var(--mono); font-size:10px; letter-spacing:.28em; text-transform:uppercase; color:var(--ink-mute); }
+  .crumbs .path b{ color:var(--ink); font-weight:500; }
+  .actions{ display:flex; gap:10px; align-items:center; }
+  .btn{
+    font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase;
+    border:1px solid var(--ink); background:var(--paper); color:var(--ink);
+    padding:8px 14px; cursor:pointer; display:inline-flex; align-items:center; gap:8px;
+    transition: all .15s ease;
+  }
+  .btn:hover{ background: var(--ink); color: var(--paper); }
+  .btn.primary{ background:var(--ink); color:var(--paper); }
+  .btn.primary:hover{ background:var(--ink-2); }
+  .btn.ghost{ border-color: var(--rule); color: var(--ink-soft); }
+  .btn.ghost:hover{ color: var(--ink); border-color: var(--ink); background: transparent; }
+
+  /* Hero */
+  .hero{
+    margin-top:18px; padding: 6px 0 22px;
+    border-top: 2px solid var(--ink); border-bottom: 1px solid var(--ink); position:relative;
+  }
+  .hero::after{ content:""; position:absolute; top:6px; left:0; right:0; height:1px; background:var(--ink); }
+  .hero-meta{
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.3em; text-transform:uppercase;
+    color:var(--ink-soft); display:flex; gap:24px; padding: 14px 0 6px; flex-wrap:wrap;
+  }
+  .hero-meta span b{ color:var(--ink); font-weight:500; }
+  .hero h1{
+    font-family:var(--display); font-weight:600; font-size: clamp(42px, 5vw, 78px);
+    letter-spacing:.01em; line-height:.95; margin: 12px 0 18px; color:var(--ink);
+  }
+  .hero h1 .amp{ color:var(--blue); font-style:italic; font-family:"IBM Plex Serif", serif; font-weight:400; }
+  .hero-lede{ font-family:var(--sans); font-size:14px; line-height:1.55; color:var(--ink-soft); max-width: 780px; }
+  .hero-lede em{ color:var(--ink); font-style:italic; }
+
+  /* Stats */
+  .stats{ display:grid; grid-template-columns: repeat(4, 1fr); gap:0; margin-top: 26px; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+  .stat{ padding: 18px; border-right: 1px solid var(--rule); position:relative; }
+  .stat:last-child{ border-right:none; }
+  .stat-roman{ position:absolute; top:14px; right:14px; font-family:var(--display); font-size:11px; color:var(--ink-mute); letter-spacing:.1em; }
+  .stat-label{ font-family:var(--mono); font-size:9.5px; letter-spacing:.28em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:14px; }
+  .stat-value{ font-family:var(--display); font-weight:600; font-size: 36px; line-height:1; color:var(--ink); font-feature-settings:"tnum"; }
+  .stat-value .unit{ font-size:18px; color:var(--ink-soft); margin-left:4px; font-weight:500;}
+  .stat-foot{ margin-top:12px; font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--ink-soft); }
+  .stat-foot .up{ color: var(--green); }
+  .spark{ position:absolute; bottom:14px; right:14px; }
+  .spark svg path{ fill:none; stroke: var(--blue); stroke-width:1.2; }
+  .spark svg circle{ fill: var(--ink); }
+
+  /* ── Overview Dashboard (AgentBase style) ── */
+  .ov-stats{ display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; margin-top:22px; }
+  .ov-stat{
+    min-height:126px; padding:18px 20px; position:relative;
+    background: linear-gradient(135deg, rgba(94,121,178,.06), rgba(184,200,232,.04));
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--rule);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+    transition: border-color .2s, background .2s;
+  }
+  .ov-stat:hover{ border-color: var(--blue); background: linear-gradient(135deg, rgba(94,121,178,.12), rgba(184,200,232,.08)); }
+  .ov-stat .ov-stat-icon{
+    width:34px; height:34px; border-radius:8px; display:grid; place-items:center;
+    background: rgba(94,121,178,.12); color: var(--blue); margin-bottom:10px;
+  }
+  .ov-stat .ov-stat-icon svg{ width:18px; height:18px; }
+  .ov-stat .ov-stat-val{ font-family:var(--display); font-weight:700; font-size:30px; line-height:1; color:var(--ink); font-feature-settings:"tnum"; }
+  .ov-stat .ov-stat-val .unit{ font-size:15px; color:var(--ink-soft); margin-left:4px; font-weight:500; }
+  .ov-stat .ov-stat-lbl{ font-family:var(--mono); font-size:9.5px; letter-spacing:.24em; text-transform:uppercase; color:var(--ink-soft); margin-top:8px; }
+  .ov-stat .ov-stat-foot{ font-family:var(--mono); font-size:10px; color:var(--ink-mute); margin-top:6px; }
+  .ov-stat .ov-stat-foot .up{ color:var(--green); }
+
+  .ov-grid{ display:grid; grid-template-columns: minmax(0, 1fr) 370px; gap:18px; margin-top:22px; }
+
+  .ov-panel{
+    border: 1px solid var(--rule); position:relative;
+    background: linear-gradient(135deg, rgba(94,121,178,.04), rgba(184,200,232,.02));
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+  }
+  .ov-panel-head{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:14px 18px; border-bottom:1px solid var(--rule);
+  }
+  .ov-panel-head h3{
+    font-family:var(--display); font-weight:600; font-size:15px; letter-spacing:.14em; text-transform:uppercase; margin:0; color:var(--ink);
+  }
+  .ov-panel-head .ov-link{
+    font-family:var(--mono); font-size:9px; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--blue); cursor:pointer; transition: opacity .15s;
+  }
+  .ov-panel-head .ov-link:hover{ opacity:.7; }
+  .ov-panel-body{ padding:0; }
+  .ov-panel-body .ov-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:11px 18px; border-bottom:1px solid var(--rule-soft); transition: background .12s;
+  }
+  .ov-panel-body .ov-row:last-child{ border-bottom:none; }
+  .ov-panel-body .ov-row:hover{ background: rgba(94,121,178,.04); }
+
+  .ov-cta-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-top:18px; }
+  .ov-cta{
+    padding:22px 20px; border:1px solid var(--rule); cursor:pointer;
+    background: linear-gradient(135deg, rgba(94,121,178,.04), rgba(184,200,232,.02));
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+    transition: border-color .2s, background .2s;
+  }
+  .ov-cta:hover{ border-color: var(--blue); background: linear-gradient(135deg, rgba(94,121,178,.10), rgba(184,200,232,.06)); }
+
+  /* Section titles */
+  .sec-title{
+    margin: 36px 0 16px; display:flex; align-items:baseline; gap:16px;
+    border-bottom: 1px solid var(--ink); padding-bottom: 10px; position:relative;
+  }
+  .sec-title::after{ content:""; position:absolute; bottom:-4px; left:0; right:0; height:1px; background: var(--ink); }
+  .sec-title h2{ font-family:var(--display); font-weight:600; font-size: 22px; letter-spacing:.18em; margin:0; color:var(--ink); text-transform:uppercase; }
+  .sec-title .kicker{ font-family:var(--mono); font-size:10px; letter-spacing:.28em; text-transform:uppercase; color:var(--ink-mute); }
+  .sec-title .ornament{ font-family:var(--display); color:var(--blue); font-size:18px; letter-spacing:.4em; flex:1; text-align:center; opacity:.6; }
+  .sec-title .right{ margin-left:auto; font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:var(--ink-soft); }
+
+  /* Feature */
+  .feature{ margin-top:20px; display:grid; grid-template-columns: 1.45fr 1fr; gap: 28px; align-items:start; }
+  .feature-text .eyebrow{ font-family:var(--mono); font-size:10px; letter-spacing:.3em; text-transform:uppercase; color:var(--ink-soft); display:flex; gap:12px; align-items:center; }
+  .feature-text .eyebrow .tag{ border:1px solid var(--ink); padding:3px 8px; font-size:9px; color:var(--ink); }
+  .feature-text h3{ font-family:var(--display); font-weight:600; font-size: 36px; line-height:1.05; letter-spacing:.01em; margin: 12px 0 14px; color:var(--ink); }
+  .feature-text h3 .arr{ color: var(--blue); font-family: var(--mono); font-weight:300; font-size:.7em; vertical-align:middle; margin: 0 6px; }
+  .feature-text p.dek{ font-family:var(--sans); font-size:13.5px; line-height:1.6; color:var(--ink-soft); max-width:560px; }
+  .feature-text p.dek::first-letter{ font-family: var(--display); font-size: 42px; float:left; line-height:.85; padding: 4px 8px 0 0; color: var(--ink); font-weight:600; }
+  .quad{ margin-top:18px; display:grid; grid-template-columns: 1fr 1fr; border-top:1px solid var(--ink); border-left:1px solid var(--ink); }
+  .quad .cell{ border-right:1px solid var(--ink); border-bottom:1px solid var(--ink); padding:14px 16px; }
+  .quad .k{ font-family:var(--mono); font-size:9.5px; letter-spacing:.28em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:8px;}
+  .quad .v{ font-family:var(--display); font-size:14px; color:var(--ink); letter-spacing:.06em; }
+  .quad .v.num{ font-size:26px; font-weight:600; }
+
+  /* Index card */
+  .index-card{ border:1px solid var(--ink); background: var(--paper); padding: 18px; position:relative; }
+  .index-card-tag{ position:absolute; top:-10px; left:18px; background: var(--paper); padding: 2px 8px; font-family: var(--display); font-size: 11px; letter-spacing:.2em; color: var(--ink); border:1px solid var(--ink); }
+  .index-composition{ margin-top:8px; }
+  .index-stock{ display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom:1px solid var(--rule); font-family:var(--mono); font-size:12px; }
+  .index-stock:last-child{ border-bottom:none; }
+  .stock-ticker{ font-family:var(--display); font-size:14px; font-weight:600; letter-spacing:.1em; color:var(--ink); }
+  .stock-full{ font-size:11px; color:var(--ink-soft); letter-spacing:.06em; margin-left:10px; }
+  .stock-weight{ font-family:var(--display); font-size:18px; font-weight:600; color:var(--blue); }
+  .stock-price{ color:var(--ink-soft); font-size:11px; letter-spacing:.06em; }
+  .stock-change{ font-size:11px; letter-spacing:.06em; }
+  .stock-change.up{ color: var(--green); }
+  .stock-change.dn{ color: var(--red); }
+  .index-footer{ margin-top:14px; padding-top:12px; border-top:1px solid var(--ink); display:flex; justify-content:space-between; font-family:var(--mono); font-size:9.5px; letter-spacing:.22em; text-transform:uppercase; color: var(--ink-soft); }
+  .index-footer b{ color:var(--ink); font-weight:500; }
+
+  /* Pipeline */
+  .pipeline{ margin-top:14px; border: 1px solid var(--ink); background: var(--paper); }
+  .pipe-grid{ display:grid; grid-template-columns: repeat(5, 1fr); }
+  .pipe-step{ padding: 18px 16px; border-right: 1px solid var(--rule); position:relative; }
+  .pipe-step:last-child{ border-right:none;}
+  .pipe-step .roman{ font-family:var(--display); font-size:11px; letter-spacing:.1em; color: var(--blue); margin-bottom:8px; display:inline-block; border-bottom: 1px solid var(--rule); padding-bottom:4px; }
+  .pipe-step .glyph{ width:30px; height:30px; margin-bottom:12px; color:var(--ink); }
+  .pipe-step h4{ font-family:var(--display); font-size:14px; letter-spacing:.16em; text-transform:uppercase; margin:0 0 6px; font-weight:600; }
+  .pipe-step p{ font-family:var(--mono); font-size:10px; letter-spacing:.12em; color:var(--ink-soft); margin:0; line-height:1.5; }
+  .pipe-arrow{ position:absolute; right:-7px; top:48px; width:13px; height:13px; background: var(--paper); border-top: 1px solid var(--ink); border-right: 1px solid var(--ink); transform: rotate(45deg); z-index:2; }
+  .pipe-step:last-child .pipe-arrow{ display:none; }
+
+  /* Table */
+  table.indices{ width:100%; border-collapse: collapse; margin-top:8px;}
+  table.indices th{ text-align:left; font-family:var(--mono); font-size:9.5px; letter-spacing:.24em; text-transform:uppercase; color:var(--ink-soft); padding: 10px 12px 8px; border-bottom: 1px solid var(--ink); font-weight:400; }
+  table.indices td{ padding: 14px 12px; border-bottom: 1px solid var(--rule); font-family:var(--sans); font-size:13px; color:var(--ink); vertical-align: top; }
+  table.indices tr:hover td{ background: rgba(184,200,232,.18); cursor:pointer; }
+  td.idx-id{ font-family:var(--mono); font-size:11px; color:var(--ink-soft); letter-spacing:.1em; width:80px;}
+  td.idx-name{ font-family:var(--display); font-size:14px; letter-spacing:.04em; font-weight:500; }
+  td.idx-stocks{ font-family:var(--mono); font-size:11px; color:var(--ink-soft); letter-spacing:.06em; }
+  td.idx-tvl{ font-family:var(--display); font-size:16px; font-weight:600; }
+  td.idx-perf{ font-family:var(--mono); font-size:12px; letter-spacing:.05em; }
+  td.idx-perf.up{ color: var(--green); }
+  td.idx-perf.dn{ color: var(--red); }
+  td.idx-fee{ font-family:var(--mono); font-size:12px; color:var(--ink-soft); }
+  .pill{ font-family:var(--mono); font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; padding: 3px 9px; border: 1px solid var(--ink); display:inline-block; }
+  .pill.live{ border-color: var(--green); color: var(--green); }
+  .pill.new{ background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .pill.hot{ border-color: var(--ochre); color: var(--ochre); }
+
+  /* Right rail */
+  aside.rail{
+    border-left: 1px solid var(--rule); padding: 26px 22px;
+    display:flex; flex-direction:column; gap:24px;
+    background: linear-gradient(180deg, rgba(184,200,232,.08), transparent 25%);
+  }
+  .rail-section h3{ font-family:var(--display); font-size:14px; letter-spacing:.18em; text-transform:uppercase; margin:0 0 4px; font-weight:600; display:flex; align-items:center; gap:10px; border-bottom: 1px solid var(--ink); padding-bottom: 8px; }
+  .rail-section h3 .deco{ font-weight:400; color: var(--blue); letter-spacing:.2em;}
+  .rail-kicker{ font-family:var(--mono); font-size:9.5px; letter-spacing:.26em; text-transform:uppercase; color:var(--ink-mute); margin-bottom:10px; }
+
+  /* Terminal mini (rail) */
+  .terminal-mini{
+    background: var(--paper-2); border: 1px solid var(--ink); padding: 14px;
+    font-family: var(--mono); font-size: 11px; line-height: 1.7; color: var(--ink-soft); position:relative; overflow:hidden;
+  }
+  .terminal-mini::before{
+    content:"ATLAS TERMINAL"; position:absolute; top:0; left:0; right:0;
+    background: var(--paper-3); padding: 6px 14px; font-size:9px; letter-spacing:.3em; text-transform:uppercase;
+    color: var(--ink-soft); border-bottom: 1px solid var(--ink);
+    font-family:var(--display); font-weight:600;
+  }
+  .terminal-mini .tbody{ padding-top:28px; }
+  .terminal-mini .prompt{ color: var(--blue); font-weight:600; }
+  .terminal-mini .response{ color: var(--ink-soft); }
+  .terminal-mini .success{ color: var(--green); font-weight:500; }
+
+  /* Feed items */
+  .feed-item{ padding: 12px 0; border-bottom: 1px solid var(--rule); display:flex; flex-direction:column; gap:4px; }
+  .feed-item:last-child{ border-bottom:none; }
+  .feed-row{ display:flex; justify-content:space-between; align-items:center;}
+  .feed-action{ font-family:var(--display); font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink); font-weight:500;}
+  .feed-tag{ font-family:var(--mono); font-size:9px; letter-spacing:.2em; text-transform:uppercase; padding: 3px 7px; border:1px solid var(--ink-soft); color: var(--ink-soft);}
+  .feed-tag.buy{ color: var(--green); border-color: var(--green); }
+  .feed-tag.sell{ color: var(--red); border-color: var(--red); }
+  .feed-tag.create{ color: var(--blue); border-color: var(--blue); }
+  .feed-detail{ font-family:var(--sans); font-size:12px; color:var(--ink-soft); line-height:1.45;}
+  .feed-time{ font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--ink-mute); }
+
+  /* Treasury mini */
+  .treas-value{ font-family:var(--display); font-weight:600; font-size: 28px; color:var(--ink); margin: 8px 0 4px; font-feature-settings:"tnum"; }
+  .treas-value .unit{ font-size:14px; color:var(--ink-soft); margin-left:4px;}
+  .treas-delta{ font-family:var(--mono); font-size:10px; color:var(--green); letter-spacing:.06em; }
+  .treas-breakdown{ margin-top:12px; padding-top:10px; border-top:1px solid var(--rule); }
+  .treas-row{ display:flex; justify-content:space-between; padding: 6px 0; font-family:var(--mono); font-size:11px; color:var(--ink-soft); letter-spacing:.06em; }
+  .treas-row b{ color:var(--ink); font-weight:500; }
+
+  .colophon{
+    margin-top:48px; padding-top:14px; border-top: 1px solid var(--ink);
+    display:flex; justify-content:space-between; align-items:center;
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.24em; text-transform:uppercase; color: var(--ink-soft);
+  }
+  .colophon .ornament{ font-family: var(--display); letter-spacing:.4em; color: var(--blue); }
+
+  .glyph-line{ stroke: currentColor; stroke-width:1.2; fill:none; }
+  .glyph-fill{ fill: currentColor; }
+
+  /* ============ FULL TERMINAL ============ */
+  .terminal-full{
+    --term-line: 28px;
+    --term-offset: 0px;
+    display:flex; flex-direction:column; height: calc(100vh - 52px); margin-top:18px;
+    border: 2px solid var(--ink); background: var(--paper); position:relative; overflow:hidden;
+  }
+  .terminal-full::before{
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background:
+      repeating-linear-gradient(180deg, transparent 0 calc(var(--term-line) - 1px), var(--rule-soft) calc(var(--term-line) - 1px) var(--term-line)),
+      linear-gradient(90deg, transparent 58px, var(--rule) 58px 59px, transparent 59px);
+    background-position-y: calc(var(--term-offset) - 8px);
+    opacity:.45;
+  }
+  .terminal-header{
+    background: var(--paper-2); padding: 14px 24px; display:flex; justify-content:space-between; align-items:center;
+    border-bottom: 2px solid var(--ink); position:relative; z-index:1;
+  }
+  .terminal-header::after{
+    content:""; position:absolute; left:0; right:0; bottom:-5px; height:1px; background: var(--ink); opacity:.4;
+  }
+  .terminal-header .title{
+    font-family:var(--display); font-size:14px; letter-spacing:.22em; text-transform:uppercase; color: var(--ink);
+    display:flex; align-items:center; gap:12px; font-weight:600;
+  }
+  .terminal-header .title .dot{ width:8px; height:8px; border-radius:50%; background: var(--green); border:1px solid var(--ink); position:relative; }
+  .terminal-header .title .dot::after{ content:""; position:absolute; inset:-4px; border-radius:50%; border:1px solid var(--green); opacity:.4; animation: pulse 2.4s ease-out infinite; }
+  .terminal-header .info{
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.24em; text-transform:uppercase; color: var(--ink-soft);
+  }
+  .terminal-messages{
+    --term-line: 28px;
+    flex:1; overflow-y:auto; padding: 20px 28px 20px 68px; display:flex; flex-direction:column; gap:0;
+    font-family: var(--mono); font-size: 13px; line-height: var(--term-line); color: var(--ink);
+    position:relative; z-index:1;
+  }
+  .terminal-messages .system-msg{
+    color: var(--ink-mute); font-size:10px; letter-spacing:.16em;
+    line-height: var(--term-line); height: var(--term-line);
+    border-bottom: 1px solid var(--rule); margin-bottom:0;
+    font-family:var(--mono); text-transform:uppercase;
+    overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+  }
+  .terminal-messages .user-msg{
+    color: var(--ink); font-weight:500;
+    line-height: var(--term-line); min-height: var(--term-line);
+    padding-top: 0;
+  }
+  .terminal-messages .user-msg .prompt{
+    color: var(--blue); font-weight:600; font-family:var(--display); font-size:14px; letter-spacing:.1em;
+  }
+  .terminal-messages .agent-msg{
+    color: var(--ink-soft);
+    padding-left: 22px;
+    border-left: 2px solid var(--blue);
+    line-height: var(--term-line); min-height: var(--term-line);
+    font-size:12.5px; letter-spacing:.03em;
+  }
+  .terminal-messages .success-msg{
+    color: var(--green); font-weight:500;
+    line-height: var(--term-line); min-height: var(--term-line);
+    padding-left: 22px;
+    border-left: 2px solid var(--green);
+  }
+  .terminal-messages .error-msg{
+    color: var(--red); font-weight:500;
+    line-height: var(--term-line); min-height: var(--term-line);
+    padding-left: 22px;
+    border-left: 2px solid var(--red);
+  }
+  .terminal-messages .thinking{
+    color: var(--ink-mute); font-style:italic; font-size:11px; letter-spacing:.1em;
+    line-height: var(--term-line); height: var(--term-line);
+  }
+  /* spacer between message groups */
+  .terminal-messages .msg-spacer{
+    height: var(--term-line);
+  }
+  /* confirm action buttons */
+  .terminal-messages .confirm-wrap{
+    display:flex; gap:10px; padding: 8px 0 4px 22px; align-items:center;
+  }
+  .confirm-wrap .confirm-btn{
+    font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase;
+    padding: 8px 18px; border:1px solid var(--ink); cursor:pointer; transition: all .15s;
+  }
+  .confirm-wrap .confirm-btn.yes{
+    background: var(--ink); color: var(--paper);
+  }
+  .confirm-wrap .confirm-btn.yes:hover{ background: var(--green); border-color: var(--green); }
+  .confirm-wrap .confirm-btn.no{
+    background: var(--paper); color: var(--ink-soft);
+  }
+  .confirm-wrap .confirm-btn.no:hover{ background: var(--red); color: var(--paper); border-color: var(--red); }
+  .confirm-wrap .confirm-label{
+    font-family:var(--mono); font-size:10px; color:var(--ink-mute); letter-spacing:.12em;
+  }
+  .terminal-input-wrap{
+    border-top: 2px solid var(--ink); padding: 18px 24px 18px 24px; display:flex; align-items:center; gap:14px;
+    background: var(--paper-2); position:relative; z-index:1;
+  }
+  .terminal-input-wrap::before{
+    content:""; position:absolute; left:0; right:0; top:-5px; height:1px; background: var(--ink); opacity:.4;
+  }
+  .terminal-input-wrap .prompt-char{
+    font-family:var(--display); font-size:18px; color: var(--blue); font-weight:600; letter-spacing:.1em;
+  }
+  .terminal-input{
+    flex:1; background:none; border:none; outline:none;
+    font-family: var(--mono); font-size: 14px; color: var(--ink); letter-spacing:.04em;
+    caret-color: var(--blue);
+  }
+  .terminal-input::placeholder{ color: var(--ink-mute); letter-spacing:.08em; font-style:italic; }
+  .terminal-send{
+    font-family:var(--mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase;
+    background: var(--ink); color: var(--paper); border:1px solid var(--ink); padding: 10px 20px; cursor:pointer;
+    transition: all .15s ease;
+  }
+  .terminal-send:hover{ background: var(--ink-2); box-shadow: 2px 2px 0 var(--ink); }
+
+  /* Stocks grid view */
+  .stocks-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:16px; margin-top:16px; }
+  .stock-card{
+    border:1px solid var(--ink); padding:18px; background: var(--paper); cursor:pointer;
+    transition: all .15s ease; position:relative;
+  }
+  .stock-card:hover{ box-shadow: 3px 3px 0 var(--ink-2); transform: translateY(-2px); }
+  .stock-card .sc-ticker{ font-family:var(--display); font-size:20px; font-weight:600; letter-spacing:.12em; }
+  .stock-card .sc-name{ font-family:var(--mono); font-size:10px; color:var(--ink-soft); letter-spacing:.1em; text-transform:uppercase; margin-top:4px; }
+  .stock-card .sc-price{ font-family:var(--display); font-size:28px; font-weight:600; margin-top:14px; font-feature-settings:"tnum"; }
+  .stock-card .sc-change{ font-family:var(--mono); font-size:12px; margin-top:6px; letter-spacing:.06em; }
+  .stock-card .sc-change.up{ color:var(--green); }
+  .stock-card .sc-change.dn{ color:var(--red); }
+
+  /* Portfolio */
+  .portfolio-header{ display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:20px; }
+  .port-card{ border:1px solid var(--ink); padding:22px; }
+  .port-card .label{ font-family:var(--mono); font-size:10px; letter-spacing:.28em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:10px; }
+  .port-card .big{ font-family:var(--display); font-size:42px; font-weight:600; font-feature-settings:"tnum"; }
+  .port-card .big .unit{ font-size:20px; color:var(--ink-soft); margin-left:4px; }
+  .port-card .delta{ font-family:var(--mono); font-size:11px; margin-top:8px; }
+
+  .holdings-table{ width:100%; border-collapse:collapse; margin-top:16px; }
+  .holdings-table th{ text-align:left; font-family:var(--mono); font-size:9.5px; letter-spacing:.24em; text-transform:uppercase; color:var(--ink-soft); padding:10px 12px 8px; border-bottom:1px solid var(--ink); font-weight:400; }
+  .holdings-table td{ padding:14px 12px; border-bottom:1px solid var(--rule); font-family:var(--sans); font-size:13px; }
+  .holdings-table tr:hover td{ background:rgba(184,200,232,.18); }
+
+  @media (max-width: 1180px){ .app, .app.has-rail{ grid-template-columns: 200px 1fr; } aside.rail{ display:none; } }
+  @media (max-width: 768px){ .app, .app.has-rail{ grid-template-columns: 1fr; } aside.nav{ display:none; } .stats{ grid-template-columns: repeat(2, 1fr); } .ov-stats{ grid-template-columns: repeat(2, 1fr); } .ov-grid{ grid-template-columns: 1fr; } .ov-cta-grid{ grid-template-columns: 1fr; } .feature{ grid-template-columns: 1fr; } .pipe-grid{ grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+// ─── DATA ───
+// Robinhood Chain Testnet explorer base
+const RH_EXPLORER = 'https://explorer.testnet.chain.robinhood.com/token/';
+
+// Official Robinhood Chain Testnet stock tokens (from faucet) + coming soon
+const STOCKS = [
+  // Live on testnet (official faucet tokens)
+  { ticker:'TSLA', name:'Tesla Inc.', price:187.34, change:-1.12, token:'0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E', live:true },
+  { ticker:'AMZN', name:'Amazon.com Inc.', price:191.75, change:2.11, token:'0x5884aD2f920c162CFBbACc88C9C51AA75eC09E02', live:true },
+  { ticker:'NFLX', name:'Netflix Inc.', price:634.20, change:1.92, token:'0x3b8262A63d25f0477c4DDE23F83cfe22Cb768C93', live:true },
+  { ticker:'AMD', name:'AMD Inc.', price:162.44, change:2.88, token:'0x71178BAc73cBeb415514eB542a8995b82669778d', live:true },
+  { ticker:'PLTR', name:'Palantir Technologies', price:118.50, change:3.72, token:'0x1FBE1a0e43594b3455993B5dE5Fd0A7A266298d0', live:true },
+  // Coming soon (not yet on testnet)
+  { ticker:'AAPL', name:'Apple Inc.', price:198.42, change:1.24, live:false },
+  { ticker:'MSFT', name:'Microsoft Corp.', price:442.18, change:0.87, live:false },
+  { ticker:'GOOG', name:'Alphabet Inc.', price:176.33, change:-0.42, live:false },
+  { ticker:'NVDA', name:'NVIDIA Corp.', price:892.40, change:3.45, live:false },
+  { ticker:'META', name:'Meta Platforms', price:498.22, change:1.78, live:false },
+  { ticker:'JPM', name:'JPMorgan Chase', price:198.90, change:1.45, live:false },
+  { ticker:'GS', name:'Goldman Sachs', price:468.12, change:2.10, live:false },
+  { ticker:'DIS', name:'Walt Disney Co.', price:112.55, change:-0.67, live:false },
+  { ticker:'KO', name:'Coca-Cola Co.', price:62.30, change:-0.55, live:false },
+  { ticker:'INTC', name:'Intel Corp.', price:31.20, change:-1.44, live:false },
+];
+
+const INDICES = [
+  { id:'IDX-001', name:'Tech Pack', ticker:'$TPCK', stocks:['TSLA','AMZN','AMD','PLTR'], weights:[25,25,25,25], tvl:'$214K', perf:4.2, fee:0.3, status:'live' },
+  { id:'IDX-002', name:'Stream & Drive', ticker:'$STDR', stocks:['TSLA','NFLX','AMZN'], weights:[34,33,33], tvl:'$186K', perf:3.8, fee:0.5, status:'live' },
+  { id:'IDX-003', name:'AI Leaders', ticker:'$AILD', stocks:['AMD','PLTR','AMZN'], weights:[34,33,33], tvl:'$142K', perf:5.4, fee:0.3, status:'hot' },
+  { id:'IDX-004', name:'Full Market', ticker:'$FULL', stocks:['TSLA','AMZN','NFLX','AMD','PLTR'], weights:[20,20,20,20,20], tvl:'$98K', perf:3.1, fee:0.4, status:'new' },
+];
+
+// ─── AI AGENT CONFIG ───
+// Keys loaded from config.js (gitignored)
+let tavilyKeyIdx = 0;
+
+const SEARCH_PATTERN = /\?|what\s|how\s|when\s|who\s|why\s|price of|worth|trending|news|current|latest|check|find|tell me|info|explain|market|today|announce|robinhood|arbitrum/i;
+
+const ATLAS_SYSTEM_PROMPT = `You are ATLAS, an AI-powered trading terminal for the ATLAS protocol, a tokenized stock index platform on Robinhood Chain (Arbitrum Orbit L2).
+
+## Your capabilities:
+1. **Buy stocks**: Help users buy tokenized stocks (ERC-20 tokens representing US stocks)
+2. **Sell stocks**: Help users sell their tokenized stock holdings
+3. **Create index**: Help users create custom index funds (baskets of 2-4 stocks deployed as ERC-20 tokens)
+4. **Send tokens**: Help users send tokens to other wallet addresses
+5. **Portfolio**: Show the user's current holdings
+6. **Price check**: Show current prices for stocks
+7. **General conversation**: Answer questions about ATLAS, DeFi, markets, crypto, stocks
+
+## Available tokenized stocks on Robinhood Chain:
+${STOCKS.map(s => `${s.ticker} (${s.name}): $${s.price.toFixed(2)}, 24h: ${s.change > 0 ? '+' : ''}${s.change}%`).join('\n')}
+
+## Live index funds on ATLAS:
+${INDICES.map(idx => `${idx.id} "${idx.name}" (${idx.ticker}): Stocks: ${idx.stocks.join(', ')}, TVL: ${idx.tvl}, Perf: ${idx.perf > 0 ? '+' : ''}${idx.perf}%`).join('\n')}
+
+## How you respond:
+- You must respond with a JSON object ONLY, no markdown code blocks, just raw JSON:
+{
+  "reply": "your message to the user",
+  "action": "none" | "buy" | "sell" | "create_index" | "send" | "portfolio" | "price",
+  "data": {
+    "ticker": "TSLA",
+    "amount": 500,
+    "qty": 2.67,
+    "indexName": "My Index",
+    "indexStocks": ["AAPL","MSFT","GOOG","AMZN"],
+    "toAddress": "0x...",
+    "sendAmount": 10,
+    "sendToken": "TSLA"
+  }
+}
+
+## Intent detection rules:
+1. If the user wants to BUY a stock: action="buy", extract ticker and amount. If they don't specify which stock or how much, ASK them (action="none") before executing.
+2. If the user wants to SELL a stock: action="sell", extract ticker and qty. If missing info, ASK.
+3. If the user wants to CREATE an index: action="create_index", extract name and stocks (2-4 stocks). Guide them step by step if info is missing.
+4. If the user wants to SEND tokens: action="send", extract toAddress, amount, token. Ask for missing info.
+5. If the user asks about their PORTFOLIO: action="portfolio"
+6. If the user asks about a stock PRICE: action="price", extract ticker
+7. For general conversation, questions, greetings: action="none", just reply naturally.
+
+## Important behavior:
+- Be concise and helpful, like a professional trading terminal
+- ONLY set action to buy/sell/create_index/send when you have ALL required data. The UI will show a confirm button automatically, so DO NOT ask "do you want to confirm?" in your reply. Just summarize the order details.
+- If the user is vague ("buy some stock"), ask which stock and how much (action="none")
+- Multi-turn: remember context from the conversation. If user said "buy TSLA" then "500 dollars", connect them and set action="buy" with full data.
+- For create index, guide step by step: ask for name and stocks. Once you have name + at least 2 stocks, set action="create_index".
+- Always respond in English
+- Keep responses short and terminal-like, not long paragraphs
+- Use the stock data provided above for accurate prices
+- When the user provides all info for an action in one message (e.g. "buy $500 of TSLA"), immediately set the action with full data`;
+
+// ─── TAVILY SEARCH ───
+async function searchTavily(query) {
+  for (let i = 0; i < TAVILY_KEYS.length; i++) {
+    const key = TAVILY_KEYS[tavilyKeyIdx % TAVILY_KEYS.length];
+    tavilyKeyIdx++;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 5000);
+      const res = await fetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: key, query, search_depth: 'basic', max_results: 3, include_answer: true }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const parts = [];
+      if (data.answer) parts.push('[Summary] ' + data.answer);
+      if (data.results) data.results.slice(0, 3).forEach(r => parts.push(`[${r.title}] ${r.content?.slice(0, 200)}`));
+      return parts.join('\n');
+    } catch { continue; }
+  }
+  return null;
+}
+
+// ─── OPENAI CHAT ───
+async function callAtlasAI(history) {
+  // Check if last user message needs web search
+  const lastMsg = history.filter(m => m.role === 'user').pop();
+  let searchContext = '';
+  if (lastMsg && SEARCH_PATTERN.test(lastMsg.content)) {
+    const results = await searchTavily(lastMsg.content);
+    if (results) searchContext = '\n\nWEB SEARCH RESULTS (use to answer if relevant):\n' + results;
+  }
+
+  const messages = [
+    { role: 'system', content: ATLAS_SYSTEM_PROMPT + searchContext },
+    ...history.slice(-20),
+  ];
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + OPENAI_KEY,
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      messages,
+      temperature: 0.7,
+      max_tokens: 600,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('OpenAI error: ' + err);
+  }
+
+  const data = await res.json();
+  const raw = data.choices?.[0]?.message?.content || '';
+
+  // Parse JSON response from AI
+  try {
+    // Strip markdown code fences if present
+    const cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+    return JSON.parse(cleaned);
+  } catch {
+    // If AI didn't return valid JSON, wrap it
+    return { reply: raw, action: 'none', data: {} };
+  }
+}
+
+// ─── BUILD CONFIRMATION MESSAGE ───
+function buildConfirmation(parsed) {
+  const { action, data } = parsed;
+
+  if (action === 'buy' && data?.ticker && data?.amount) {
+    const stock = STOCKS.find(s => s.ticker === data.ticker.toUpperCase());
+    if (stock) {
+      const qty = (data.amount / stock.price).toFixed(4);
+      return {
+        preview: [
+          { type:'agent', text: parsed.reply },
+          { type:'agent', text: `Buy ${qty} ${stock.ticker} at $${stock.price.toFixed(2)}` },
+          { type:'agent', text: `Total: $${parseFloat(data.amount).toFixed(2)} USDC` },
+        ],
+        onConfirm: [
+          { type:'success', text: `\u2713 Order filled. ${qty} ${stock.ticker} added to your portfolio.` },
+        ],
+        onCancel: [
+          { type:'error', text: 'Order cancelled.' },
+        ],
+      };
+    }
+  }
+
+  if (action === 'sell' && data?.ticker && data?.qty) {
+    const stock = STOCKS.find(s => s.ticker === data.ticker.toUpperCase());
+    if (stock) {
+      const total = (data.qty * stock.price).toFixed(2);
+      return {
+        preview: [
+          { type:'agent', text: parsed.reply },
+          { type:'agent', text: `Sell ${data.qty} ${stock.ticker} at $${stock.price.toFixed(2)}` },
+          { type:'agent', text: `Proceeds: $${total} USDC` },
+        ],
+        onConfirm: [
+          { type:'success', text: `\u2713 Sale complete. $${total} USDC credited to wallet.` },
+        ],
+        onCancel: [
+          { type:'error', text: 'Sale cancelled.' },
+        ],
+      };
+    }
+  }
+
+  if (action === 'create_index' && data?.indexName && data?.indexStocks?.length >= 2) {
+    const id = `IDX-${String(INDICES.length + 1).padStart(3,'0')}`;
+    const w = Math.floor(100 / data.indexStocks.length);
+    return {
+      preview: [
+        { type:'agent', text: parsed.reply },
+        { type:'agent', text: `Index: "${data.indexName}"` },
+        { type:'agent', text: `Composition: ${data.indexStocks.map(t => `${t} ${w}%`).join(' | ')}` },
+        { type:'agent', text: `Fee: 0.3% per mint/redeem` },
+      ],
+      onConfirm: [
+        { type:'agent', text: 'Deploying ERC-20 contract on Robinhood Chain...' },
+        { type:'success', text: `\u2713 Index ${id} "${data.indexName}" deployed successfully!` },
+      ],
+      onCancel: [
+        { type:'error', text: 'Index creation cancelled.' },
+      ],
+    };
+  }
+
+  if (action === 'send' && data?.toAddress && data?.sendAmount && data?.sendToken) {
+    return {
+      preview: [
+        { type:'agent', text: parsed.reply },
+        { type:'agent', text: `Send ${data.sendAmount} ${data.sendToken} to ${data.toAddress.slice(0,6)}...${data.toAddress.slice(-4)}` },
+      ],
+      onConfirm: [
+        { type:'success', text: `\u2713 Transaction sent. Tokens transferred successfully.` },
+      ],
+      onCancel: [
+        { type:'error', text: 'Transfer cancelled.' },
+      ],
+    };
+  }
+
+  return null; // no confirmation needed
+}
+
+// ─── EXECUTE NON-CONFIRM ACTIONS ───
+function executeAction(parsed) {
+  const { action, data } = parsed;
+  const results = [];
+
+  if (action === 'portfolio') {
+    results.push({ type:'agent', text: 'Loading your portfolio...' });
+    results.push({ type:'agent', text: '\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510' });
+    results.push({ type:'agent', text: '\u2502 YOUR PORTFOLIO                      \u2502' });
+    results.push({ type:'agent', text: '\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524' });
+    results.push({ type:'agent', text: '\u2502 Total Value:  $12,847.20 USDC       \u2502' });
+    results.push({ type:'agent', text: '\u2502 24h Change:   +$342.10 (+2.7%)      \u2502' });
+    results.push({ type:'agent', text: '\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524' });
+    results.push({ type:'agent', text: '\u2502 TSLA    12.40   $2,322.94   +1.2%   \u2502' });
+    results.push({ type:'agent', text: '\u2502 $TECH    8.00   $2,017.36   +4.2%   \u2502' });
+    results.push({ type:'agent', text: '\u2502 NVDA     2.50   $2,231.00   +3.4%   \u2502' });
+    results.push({ type:'agent', text: '\u2502 AAPL    15.00   $2,976.30   +1.2%   \u2502' });
+    results.push({ type:'agent', text: '\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518' });
+    return results;
+  }
+
+  if (action === 'price' && data?.ticker) {
+    const stock = STOCKS.find(s => s.ticker === data.ticker.toUpperCase());
+    if (stock) {
+      results.push({ type:'agent', text: `${stock.ticker} · ${stock.name}` });
+      results.push({ type:'agent', text: `Price: $${stock.price.toFixed(2)}` });
+      results.push({ type:'agent', text: `24h: ${stock.change > 0 ? '+' : ''}${stock.change}%` });
+      return results;
+    }
+  }
+
+  // Default: just show the reply
+  results.push({ type:'agent', text: parsed.reply || 'I couldn\'t process that request.' });
+  return results;
+}
+
+// ─── VIEWS ───
+
+function OverviewView({ setView }) {
+  const liveStocks = STOCKS.filter(s => s.live);
+  const topIndex = INDICES[0];
+  const statIcon = (d) => React.createElement('svg',{viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},React.createElement('path',{d}));
+  return <>
+    <div className="crumbs">
+      <div className="path">Dashboard / <b>Overview</b></div>
+      <div className="actions">
+        <button className="btn ghost">Connect Wallet</button>
+        <button className="btn" onClick={() => setView('terminal')}>Open Terminal</button>
+        <button className="btn primary" onClick={() => setView('create')}>Create Index</button>
+      </div>
+    </div>
+
+    {/* ── Stats Row ── */}
+    <div className="ov-stats">
+      <div className="ov-stat" style={{cursor:'pointer'}} onClick={() => setView('portfolio')}>
+        <div className="ov-stat-icon">{statIcon('M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6')}</div>
+        <div className="ov-stat-val">12.8K<span className="unit">USDC</span></div>
+        <div className="ov-stat-lbl">Portfolio Value</div>
+        <div className="ov-stat-foot"><span className="up">&#9650; +2.7%</span> today</div>
+      </div>
+      <div className="ov-stat" style={{cursor:'pointer'}} onClick={() => setView('indices')}>
+        <div className="ov-stat-icon">{statIcon('M4 6h16M4 12h16M4 18h7')}</div>
+        <div className="ov-stat-val">{INDICES.length}</div>
+        <div className="ov-stat-lbl">Live Index</div>
+        <div className="ov-stat-foot">TVL $847K total</div>
+      </div>
+      <div className="ov-stat" style={{cursor:'pointer'}} onClick={() => setView('stocks')}>
+        <div className="ov-stat-icon">{statIcon('M22 12h-4l-3 9L9 3l-3 9H2')}</div>
+        <div className="ov-stat-val">{liveStocks.length}<span className="unit">live</span></div>
+        <div className="ov-stat-lbl">Stocks</div>
+        <div className="ov-stat-foot">{liveStocks.map(s=>s.ticker).join(', ')}</div>
+      </div>
+      <div className="ov-stat">
+        <div className="ov-stat-icon">{statIcon('M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8v1m0 6v1m9-4a9 9 0 11-18 0 9 9 0 0118 0z')}</div>
+        <div className="ov-stat-val">1.9K<span className="unit">USDC</span></div>
+        <div className="ov-stat-lbl">Fees Earned</div>
+        <div className="ov-stat-foot"><span className="up">&#9650; +$124</span> this week</div>
+      </div>
+    </div>
+
+    {/* ── Dashboard Grid: Main + Sidebar ── */}
+    <div className="ov-grid">
+      {/* Main column */}
+      <div>
+        {/* Stocks Panel */}
+        <div className="ov-panel">
+          <div className="ov-panel-head">
+            <h3>Live Stocks</h3>
+            <span className="ov-link" onClick={() => setView('stocks')}>View All &#8599;</span>
+          </div>
+          <div className="ov-panel-body">
+            {liveStocks.map(s => <div key={s.ticker} className="ov-row" style={{cursor:'pointer'}}
+              onClick={() => window.open(RH_EXPLORER + s.token, '_blank')}>
+              <span style={{fontFamily:'var(--display)', fontWeight:600, letterSpacing:'.1em', width:60, fontSize:14}}>{s.ticker}</span>
+              <span style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', letterSpacing:'.08em', textTransform:'uppercase', flex:1}}>{s.name}</span>
+              <span style={{fontFamily:'var(--display)', fontWeight:600, fontSize:15, fontFeatureSettings:'"tnum"', width:80, textAlign:'right'}}>${s.price.toFixed(2)}</span>
+              <span style={{fontFamily:'var(--mono)', fontSize:11, width:65, textAlign:'right', color: s.change >= 0 ? 'var(--green)' : 'var(--red)'}}>
+                {s.change >= 0 ? '\u25b2' : '\u25bc'} {s.change > 0 ? '+' : ''}{s.change}%
+              </span>
+            </div>)}
+          </div>
+        </div>
+
+        {/* Index Panel */}
+        <div className="ov-panel" style={{marginTop:18}}>
+          <div className="ov-panel-head">
+            <h3>Top Index</h3>
+            <span className="ov-link" onClick={() => setView('indices')}>View All &#8599;</span>
+          </div>
+          <div className="ov-panel-body">
+            {INDICES.slice(0, 3).map(idx => <div key={idx.id} className="ov-row" style={{cursor:'pointer'}} onClick={() => setView('indices')}>
+              <span style={{fontFamily:'var(--display)', fontWeight:600, letterSpacing:'.06em', fontSize:13, width:110}}>{idx.name}</span>
+              <span style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--blue)', fontWeight:500, width:50}}>{idx.ticker}</span>
+              <span style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', flex:1}}>{idx.stocks.join(' \u00b7 ')}</span>
+              <span style={{fontFamily:'var(--display)', fontWeight:600, fontSize:13, width:65, textAlign:'right'}}>{idx.tvl}</span>
+              <span style={{fontFamily:'var(--mono)', fontSize:11, width:55, textAlign:'right', color: idx.perf >= 0 ? 'var(--green)' : 'var(--red)'}}>{idx.perf > 0 ? '+' : ''}{idx.perf}%</span>
+            </div>)}
+          </div>
+        </div>
+      </div>
+
+      {/* Sidebar */}
+      <div>
+        {/* Portfolio Panel */}
+        <div className="ov-panel">
+          <div className="ov-panel-head">
+            <h3>Holdings</h3>
+            <span className="ov-link" onClick={() => setView('portfolio')}>Open &#8599;</span>
+          </div>
+          <div className="ov-panel-body">
+            {[
+              { asset:'TSLA', qty:'12.40', value:'$2,322', pct:'+1.2%', up:true },
+              { asset:'$TPCK', qty:'8.00', value:'$2,017', pct:'+4.2%', up:true },
+              { asset:'AMZN', qty:'5.00', value:'$958', pct:'+2.1%', up:true },
+              { asset:'AMD', qty:'10.00', value:'$1,624', pct:'+2.9%', up:true },
+            ].map((h, i) => <div key={i} className="ov-row">
+              <span style={{fontFamily:'var(--display)', fontWeight:600, letterSpacing:'.08em', width:55, fontSize:13}}>{h.asset}</span>
+              <span style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--ink-soft)', flex:1}}>{h.qty}</span>
+              <span style={{fontFamily:'var(--display)', fontWeight:600, fontSize:13}}>{h.value}</span>
+              <span style={{fontFamily:'var(--mono)', fontSize:11, marginLeft:10, color: h.up ? 'var(--green)' : 'var(--red)'}}>{h.pct}</span>
+            </div>)}
+          </div>
+        </div>
+
+        {/* Treasury Panel */}
+        <div className="ov-panel" style={{marginTop:18}}>
+          <div className="ov-panel-head">
+            <h3>Treasury</h3>
+            <span className="ov-link" onClick={() => setView('treasury')}>Open &#8599;</span>
+          </div>
+          <div className="ov-panel-body">
+            {[
+              { k:'Total TVL', v:'$847,200' },
+              { k:'Fees (24h)', v:'$1,240' },
+              { k:'Minted', v:'3,847 tokens' },
+              { k:'Creators', v:'12' },
+            ].map((r, i) => <div key={i} className="ov-row">
+              <span style={{fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:'var(--ink-soft)'}}>{r.k}</span>
+              <span style={{fontFamily:'var(--display)', fontSize:14, fontWeight:600, fontFeatureSettings:'"tnum"'}}>{r.v}</span>
+            </div>)}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* ── Terminal + Create CTAs ── */}
+    <div className="ov-cta-grid">
+      <div className="ov-cta" onClick={() => setView('terminal')}>
+        <div style={{fontFamily:'var(--mono)', fontSize:9.5, letterSpacing:'.26em', textTransform:'uppercase', color:'var(--blue)', marginBottom:10}}>// AI Terminal</div>
+        <div style={{fontFamily:'var(--display)', fontSize:22, fontWeight:700, letterSpacing:'.04em', marginBottom:6}}>Trade with AI</div>
+        <p style={{fontFamily:'var(--sans)', fontSize:12.5, color:'var(--ink-soft)', lineHeight:1.5, margin:'0 0 14px'}}>
+          Buy stocks, create index funds, check prices, send tokens. Natural language.
+        </p>
+        <span className="btn primary" style={{display:'inline-flex'}}>Open Terminal</span>
+      </div>
+      <div className="ov-cta" onClick={() => setView('create')}>
+        <div style={{fontFamily:'var(--mono)', fontSize:9.5, letterSpacing:'.26em', textTransform:'uppercase', color:'var(--blue)', marginBottom:10}}>// Create</div>
+        <div style={{fontFamily:'var(--display)', fontSize:22, fontWeight:700, letterSpacing:'.04em', marginBottom:6}}>New Index Fund</div>
+        <p style={{fontFamily:'var(--sans)', fontSize:12.5, color:'var(--ink-soft)', lineHeight:1.5, margin:'0 0 14px'}}>
+          Bundle 2-4 tokenized stocks into a custom ERC-20 index. Set your fee and earn.
+        </p>
+        <span className="btn primary" style={{display:'inline-flex'}}>Create Index</span>
+      </div>
+    </div>
+
+    <div className="colophon">
+      <span>ATLAS Protocol &middot; Robinhood Chain &middot; MMXXVI</span>
+      <span className="ornament">&#10022; &#10022; &#10022;</span>
+      <span>Built on Arbitrum Orbit</span>
+    </div>
+  </>;
+}
+
+function IndicesView({ setView }) {
+  return <>
+    <div className="crumbs">
+      <div className="path">Dashboard / <b>Index</b></div>
+      <div className="actions">
+        <button className="btn primary" onClick={() => setView('create')}>Create New Index</button>
+      </div>
+    </div>
+    <div className="sec-title" style={{marginTop:18}}>
+      <span className="kicker">&sect; 03</span>
+      <h2>Live Index</h2>
+      <span className="ornament">&#10022; &middot; &#10022;</span>
+    </div>
+    <table className="indices">
+      <thead><tr><th>ID</th><th>Index Name</th><th>Ticker</th><th>Composition</th><th>TVL</th><th>7d</th><th>Fee</th><th>Status</th></tr></thead>
+      <tbody>
+        {INDICES.map(idx => <tr key={idx.id}>
+          <td className="idx-id">{idx.id}</td>
+          <td className="idx-name">{idx.name}</td>
+          <td style={{fontFamily:'var(--mono)', fontSize:12, color:'var(--blue)', fontWeight:500}}>{idx.ticker}</td>
+          <td className="idx-stocks">{idx.stocks.join(' \u00b7 ')}</td>
+          <td className="idx-tvl">{idx.tvl}</td>
+          <td className={`idx-perf ${idx.perf >= 0 ? 'up' : 'dn'}`}>{idx.perf > 0 ? '+' : ''}{idx.perf}%</td>
+          <td className="idx-fee">{idx.fee}%</td>
+          <td><span className={`pill ${idx.status}`}>{idx.status}</span></td>
+        </tr>)}
+      </tbody>
+    </table>
+  </>;
+}
+
+function StocksView() {
+  return <>
+    <div className="crumbs">
+      <div className="path">Dashboard / <b>Stocks</b></div>
+    </div>
+    <div className="sec-title" style={{marginTop:18}}>
+      <h2>Available Stocks</h2>
+      <span className="ornament">&#10022; &#10022; &#10022;</span>
+      <span className="right">{STOCKS.length} tokens on Robinhood Chain</span>
+    </div>
+    <div className="stocks-grid">
+      {STOCKS.map(s => {
+        if (s.live) {
+          const url = RH_EXPLORER + s.token;
+          return <a key={s.ticker} className="stock-card" href={url} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none', color:'inherit'}}>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+              <div className="sc-ticker">{s.ticker}</div>
+              <span style={{fontFamily:'var(--mono)', fontSize:'8px', letterSpacing:'.18em', textTransform:'uppercase', color:'var(--green)', border:'1px solid var(--green)', padding:'2px 6px'}}>Live</span>
+            </div>
+            <div className="sc-name">{s.name}</div>
+            <div className="sc-price">${s.price.toFixed(2)}</div>
+            <div className={`sc-change ${s.change >= 0 ? 'up' : 'dn'}`}>{s.change >= 0 ? '\u25b2' : '\u25bc'} {s.change > 0 ? '+' : ''}{s.change}%</div>
+            <div style={{fontFamily:'var(--mono)', fontSize:'9px', letterSpacing:'.14em', color:'var(--blue)', marginTop:'10px', textTransform:'uppercase'}}>View on Explorer &#8599;</div>
+          </a>;
+        }
+        return <div key={s.ticker} className="stock-card" style={{opacity:0.4, cursor:'default', pointerEvents:'none'}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            <div className="sc-ticker">{s.ticker}</div>
+            <span style={{fontFamily:'var(--mono)', fontSize:'8px', letterSpacing:'.18em', textTransform:'uppercase', color:'var(--ink-mute)', border:'1px solid var(--rule)', padding:'2px 6px'}}>Soon</span>
+          </div>
+          <div className="sc-name">{s.name}</div>
+          <div className="sc-price">${s.price.toFixed(2)}</div>
+          <div className={`sc-change ${s.change >= 0 ? 'up' : 'dn'}`}>{s.change >= 0 ? '\u25b2' : '\u25bc'} {s.change > 0 ? '+' : ''}{s.change}%</div>
+        </div>;
+      })}
+    </div>
+  </>;
+}
+
+function TerminalView() {
+  const [messages, setMessages] = useState([
+    { type:'system', text:'Atlas Terminal \u00b7 v0.1.0 \u00b7 Robinhood Chain Testnet' },
+    { type:'system', text:'AI Agent connected \u2014 powered by GPT-4o' },
+    { type:'spacer' },
+    { type:'agent', text:'Welcome to Atlas. I can help you buy or sell tokenized stocks, create custom index funds, send tokens, or answer any questions about the protocol. What would you like to do?' },
+  ]);
+  const [input, setInput] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const [chatHistory, setChatHistory] = useState([]);
+  const [pendingConfirm, setPendingConfirm] = useState(null);
+  const messagesEnd = useRef(null);
+  const messagesArea = useRef(null);
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => { messagesEnd.current?.scrollIntoView({ behavior:'smooth' }); }, [messages]);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // sync notebook lines with scroll
+  useEffect(() => {
+    const el = messagesArea.current;
+    if (!el) return;
+    const sync = () => {
+      if (wrapRef.current) {
+        const offset = -(el.scrollTop % 28) + 20;
+        wrapRef.current.style.setProperty('--term-offset', offset + 'px');
+      }
+    };
+    el.addEventListener('scroll', sync);
+    sync();
+    return () => el.removeEventListener('scroll', sync);
+  }, []);
+
+  const handleSend = async () => {
+    if (!input.trim() || isThinking) return;
+    const userInput = input.trim();
+    setInput('');
+    setMessages(prev => [...prev, { type:'user', text: userInput }]);
+    setIsThinking(true);
+
+    // Add to chat history
+    const newHistory = [...chatHistory, { role: 'user', content: userInput }];
+    setChatHistory(newHistory);
+
+    // Show thinking
+    setMessages(prev => [...prev, { type:'thinking', text:'Consulting the oracle...' }]);
+
+    try {
+      const parsed = await callAtlasAI(newHistory);
+      const confirm = buildConfirmation(parsed);
+
+      // Add assistant reply to chat history
+      setChatHistory(prev => [...prev, { role: 'assistant', content: parsed.reply || '' }]);
+
+      if (confirm) {
+        // Show preview + confirm buttons
+        setPendingConfirm(confirm);
+        setMessages(prev => {
+          const without = prev.filter(m => m.type !== 'thinking');
+          return [...without, ...confirm.preview, { type:'confirm' }];
+        });
+      } else {
+        // No confirmation needed, show directly
+        const resultMsgs = executeAction(parsed);
+        setMessages(prev => {
+          const without = prev.filter(m => m.type !== 'thinking');
+          return [...without, ...resultMsgs, { type:'spacer' }];
+        });
+      }
+    } catch (err) {
+      console.error('AI error:', err);
+      setMessages(prev => {
+        const without = prev.filter(m => m.type !== 'thinking');
+        return [...without, { type:'error', text: 'Connection error. Please try again.' }, { type:'spacer' }];
+      });
+    }
+    setIsThinking(false);
+  };
+
+  const handleConfirm = () => {
+    if (!pendingConfirm) return;
+    const msgs = pendingConfirm.onConfirm;
+    setPendingConfirm(null);
+    setChatHistory(prev => [...prev, { role: 'user', content: 'Confirmed.' }, { role: 'assistant', content: msgs.map(m => m.text).join(' ') }]);
+    setMessages(prev => {
+      const without = prev.filter(m => m.type !== 'confirm');
+      return [...without, ...msgs, { type:'spacer' }];
+    });
+  };
+
+  const handleCancel = () => {
+    if (!pendingConfirm) return;
+    const msgs = pendingConfirm.onCancel;
+    setPendingConfirm(null);
+    setChatHistory(prev => [...prev, { role: 'user', content: 'Cancelled.' }, { role: 'assistant', content: msgs.map(m => m.text).join(' ') }]);
+    setMessages(prev => {
+      const without = prev.filter(m => m.type !== 'confirm');
+      return [...without, ...msgs, { type:'spacer' }];
+    });
+  };
+
+  const handleKey = (e) => { if (e.key === 'Enter') handleSend(); };
+
+  const clearChat = () => {
+    setChatHistory([]);
+    setPendingConfirm(null);
+    setMessages([
+      { type:'system', text:'Atlas Terminal \u00b7 v0.1.0 \u00b7 Robinhood Chain Testnet' },
+      { type:'agent', text:'Terminal cleared. How can I help you?' },
+    ]);
+  };
+
+  return <>
+    <div className="crumbs">
+      <div className="path">Dashboard / <b>Terminal</b></div>
+      <div className="actions">
+        <button className="btn ghost" onClick={clearChat}>Clear</button>
+      </div>
+    </div>
+    <div className="terminal-full" ref={wrapRef}>
+      <div className="terminal-header">
+        <div className="title"><span className="dot"/> Atlas Terminal &middot; AI Agent</div>
+        <div className="info">Robinhood Chain &middot; Testnet &middot; GPT-4o &middot; &#10022;</div>
+      </div>
+      <div className="terminal-messages" ref={messagesArea}>
+        {messages.map((m, i) => {
+          if (m.type === 'spacer') return <div key={i} className="msg-spacer"/>;
+          if (m.type === 'system') return <div key={i} className="system-msg">{m.text}</div>;
+          if (m.type === 'user') return <div key={i} className="user-msg"><span className="prompt">&#10095; </span>{m.text}</div>;
+          if (m.type === 'thinking') return <div key={i} className="thinking">{m.text}</div>;
+          if (m.type === 'success') return <div key={i} className="success-msg">{m.text}</div>;
+          if (m.type === 'error') return <div key={i} className="error-msg">{m.text}</div>;
+          if (m.type === 'confirm') return <div key={i} className="confirm-wrap">
+            <span className="confirm-label">Confirm transaction?</span>
+            <button className="confirm-btn yes" onClick={handleConfirm}>Confirm</button>
+            <button className="confirm-btn no" onClick={handleCancel}>Cancel</button>
+          </div>;
+          return <div key={i} className="agent-msg">{m.text}</div>;
+        })}
+        <div ref={messagesEnd}/>
+      </div>
+      <div className="terminal-input-wrap">
+        <span className="prompt-char">&#10095;</span>
+        <input ref={inputRef} className="terminal-input" value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey} placeholder={pendingConfirm ? 'Confirm or cancel the transaction above' : 'Ask me anything... "buy TSLA", "create an index", "what is ATLAS?"'} disabled={isThinking || !!pendingConfirm} />
+        <button className="terminal-send" onClick={handleSend} disabled={isThinking || !!pendingConfirm}>{isThinking ? '...' : 'Send'}</button>
+      </div>
+    </div>
+  </>;
+}
+
+function PortfolioView() {
+  return <>
+    <div className="crumbs"><div className="path">Dashboard / <b>Portfolio</b></div></div>
+    <div className="sec-title" style={{marginTop:18}}>
+      <h2>Your Portfolio</h2>
+      <span className="ornament">&#10022; &#10022; &#10022;</span>
+    </div>
+    <div className="portfolio-header">
+      <div className="port-card">
+        <div className="label">Total Value</div>
+        <div className="big">$12,847<span className="unit">USDC</span></div>
+        <div className="delta" style={{color:'var(--green)'}}>&#9650; +$342.10 (+2.7%) today</div>
+      </div>
+      <div className="port-card">
+        <div className="label">Fees Earned (Creator)</div>
+        <div className="big">$1,926<span className="unit">USDC</span></div>
+        <div className="delta" style={{color:'var(--green)'}}>&#9650; +$124.50 this week</div>
+      </div>
+    </div>
+    <div className="sec-title" style={{marginTop:36}}>
+      <span className="kicker">Holdings</span>
+      <h2>Positions</h2>
+    </div>
+    <table className="holdings-table">
+      <thead><tr><th>Asset</th><th>Type</th><th>Qty</th><th>Value</th><th>24h</th></tr></thead>
+      <tbody>
+        {[
+          { asset:'TSLA', type:'Stock', qty:'12.40', value:'$2,322.94', change:'+1.2%', up:true },
+          { asset:'$TECH', type:'Index', qty:'8.00', value:'$2,017.36', change:'+4.2%', up:true },
+          { asset:'NVDA', type:'Stock', qty:'2.50', value:'$2,231.00', change:'+3.4%', up:true },
+          { asset:'AAPL', type:'Stock', qty:'15.00', value:'$2,976.30', change:'+1.2%', up:true },
+          { asset:'$AILD', type:'Index', qty:'6.00', value:'$1,512.00', change:'+5.4%', up:true },
+          { asset:'MSFT', type:'Stock', qty:'4.20', value:'$1,857.16', change:'+0.9%', up:true },
+        ].map((h, i) => <tr key={i}>
+          <td style={{fontFamily:'var(--display)', fontWeight:600, letterSpacing:'.08em'}}>{h.asset}</td>
+          <td><span className={`pill ${h.type === 'Index' ? 'hot' : 'live'}`}>{h.type}</span></td>
+          <td style={{fontFamily:'var(--mono)', fontFeatureSettings:'"tnum"'}}>{h.qty}</td>
+          <td style={{fontFamily:'var(--display)', fontWeight:600}}>{h.value}</td>
+          <td style={{fontFamily:'var(--mono)', color: h.up ? 'var(--green)' : 'var(--red)'}}>{h.change}</td>
+        </tr>)}
+      </tbody>
+    </table>
+  </>;
+}
+
+function TreasuryView() {
+  return <>
+    <div className="crumbs"><div className="path">Dashboard / <b>Treasury</b></div></div>
+    <div className="sec-title" style={{marginTop:18}}><h2>Protocol Treasury</h2><span className="ornament">&#10022; &#10022; &#10022;</span></div>
+    <section className="stats">
+      <div className="stat"><div className="stat-label">Total Treasury</div><div className="stat-value">847K<span className="unit">USDC</span></div><div className="stat-foot"><span className="up">&#9650;</span> +18.2% (7d)</div></div>
+      <div className="stat"><div className="stat-label">Protocol Fees (7d)</div><div className="stat-value">$2,841</div><div className="stat-foot">From index mints/redeems</div></div>
+      <div className="stat"><div className="stat-label">Creator Payouts (7d)</div><div className="stat-value">$1,926</div><div className="stat-foot">Distributed to 8 creators</div></div>
+      <div className="stat"><div className="stat-label">Unique Holders</div><div className="stat-value">234</div><div className="stat-foot">+42 new this week</div></div>
+    </section>
+    <div className="sec-title" style={{marginTop:36}}><span className="kicker">7d</span><h2>Treasury Growth</h2></div>
+    <svg viewBox="0 0 800 200" style={{width:'100%', height:'auto', display:'block', marginTop:16, border:'1px solid var(--ink)', background:'var(--paper)', padding:20}}>
+      <defs><pattern id="hatch2" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="var(--blue)" strokeWidth="0.6"/></pattern></defs>
+      <line x1="40" y1="170" x2="780" y2="170" stroke="var(--ink)" strokeWidth="1"/>
+      <line x1="40" y1="120" x2="780" y2="120" stroke="var(--rule)" strokeWidth=".5" strokeDasharray="2 3"/>
+      <line x1="40" y1="70" x2="780" y2="70" stroke="var(--rule)" strokeWidth=".5" strokeDasharray="2 3"/>
+      <line x1="40" y1="20" x2="780" y2="20" stroke="var(--rule)" strokeWidth=".5" strokeDasharray="2 3"/>
+      <path d="M40 140 L150 120 L260 130 L370 90 L480 100 L590 60 L700 70 L780 40" fill="none" stroke="var(--ink)" strokeWidth="2"/>
+      <path d="M40 140 L150 120 L260 130 L370 90 L480 100 L590 60 L700 70 L780 40 L780 170 L40 170 Z" fill="url(#hatch2)" opacity=".5"/>
+      <g fontFamily="IBM Plex Mono" fontSize="10" fill="var(--ink-soft)" letterSpacing="1">
+        <text x="40" y="190">MON</text><text x="260" y="190">WED</text><text x="480" y="190">FRI</text><text x="700" y="190">SUN</text>
+      </g>
+      <circle cx="780" cy="40" r="4" fill="var(--ink)"/>
+      <text x="720" y="32" fontFamily="Cinzel" fontSize="14" fill="var(--ink)">847K</text>
+    </svg>
+  </>;
+}
+
+function CreateIndexView({ setView }) {
+  return <>
+    <div className="crumbs"><div className="path">Dashboard / <b>Create Index</b></div></div>
+    <div className="sec-title" style={{marginTop:18}}><h2>Create New Index</h2><span className="ornament">&#10022; &#10022; &#10022;</span></div>
+    <p style={{fontFamily:'var(--sans)', fontSize:14, color:'var(--ink-soft)', lineHeight:1.6, maxWidth:600, marginBottom:24}}>
+      Use the <strong style={{cursor:'pointer', color:'var(--blue)'}} onClick={() => setView('terminal')}>AI Terminal</strong> to create an index with natural language, or fill in the form below.
+    </p>
+    <div style={{border:'1px solid var(--ink)', padding:28, maxWidth:600, background:'var(--paper)'}}>
+      <div style={{marginBottom:20}}>
+        <label style={{fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.28em', textTransform:'uppercase', color:'var(--ink-soft)', display:'block', marginBottom:8}}>Index Name</label>
+        <input style={{width:'100%', padding:'10px 14px', border:'1px solid var(--ink)', background:'var(--paper)', fontFamily:'var(--display)', fontSize:18, letterSpacing:'.06em', color:'var(--ink)', outline:'none'}} placeholder="e.g. Tech Titans" />
+      </div>
+      <div style={{marginBottom:20}}>
+        <label style={{fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.28em', textTransform:'uppercase', color:'var(--ink-soft)', display:'block', marginBottom:8}}>Select Stocks (4)</label>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:8}}>
+          {['AAPL','MSFT','GOOG','AMZN','NVDA','TSLA','META','NFLX'].map(t =>
+            <div key={t} style={{border:'1px solid var(--rule)', padding:'10px', textAlign:'center', cursor:'pointer', fontFamily:'var(--display)', fontSize:14, fontWeight:600, letterSpacing:'.1em', transition:'all .15s'}}
+              onMouseEnter={e => { e.target.style.borderColor = 'var(--ink)'; e.target.style.boxShadow = '2px 2px 0 var(--ink-2)'; }}
+              onMouseLeave={e => { e.target.style.borderColor = 'var(--rule)'; e.target.style.boxShadow = 'none'; }}>
+              {t}
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{marginBottom:20}}>
+        <label style={{fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.28em', textTransform:'uppercase', color:'var(--ink-soft)', display:'block', marginBottom:8}}>Creator Fee</label>
+        <input style={{width:120, padding:'10px 14px', border:'1px solid var(--ink)', background:'var(--paper)', fontFamily:'var(--mono)', fontSize:14, color:'var(--ink)', outline:'none'}} placeholder="0.3%" />
+      </div>
+      <button className="btn primary" style={{padding:'12px 24px', fontSize:12}}>Deploy Index on Robinhood Chain</button>
+    </div>
+  </>;
+}
+
+// ─── RAIL ───
+function RightRail({ setView }) {
+  return <aside className="rail">
+    <div className="rail-section">
+      <div className="rail-kicker">AI Agent</div>
+      <h3>Terminal <span className="deco">&middot; &#10057;</span></h3>
+      <div className="terminal-mini" onClick={() => setView('terminal')} style={{cursor:'pointer'}}>
+        <div className="tbody">
+          <div><span className="prompt">&gt;</span> buy $500 of TSLA</div>
+          <div className="response">Buy 2.67 TSLA at $187.34</div>
+          <div className="success" style={{color:'var(--green)'}}>&#10003; Order filled.</div>
+          <br/>
+          <div style={{color:'var(--ink-mute)', fontSize:10, letterSpacing:'.15em'}}>Click to open full terminal &rarr;</div>
+        </div>
+      </div>
+    </div>
+    <div className="rail-section">
+      <div className="rail-kicker">Live Feed</div>
+      <h3>Activity <span className="deco">&middot; &#10022;</span></h3>
+      {[
+        { addr:'0x7d\u2026a91', tag:'buy', detail:'Bought 12 $TECH ($3,026)', time:'2 min ago' },
+        { addr:'0x44\u2026f02', tag:'create', detail:'Created "Finance Pack"', time:'18 min ago' },
+        { addr:'0x18\u20263cc', tag:'buy', detail:'Bought 5 $EVREV ($1,240)', time:'34 min ago' },
+        { addr:'0x9a\u2026b71', tag:'sell', detail:'Redeemed 8 $TECH', time:'1h ago' },
+      ].map((f, i) => <div key={i} className="feed-item">
+        <div className="feed-row"><span className="feed-action">{f.addr}</span><span className={`feed-tag ${f.tag}`}>{f.tag}</span></div>
+        <div className="feed-detail">{f.detail}</div>
+        <div className="feed-time">{f.time}</div>
+      </div>)}
+    </div>
+    <div className="rail-section">
+      <div className="rail-kicker">Protocol</div>
+      <h3>Treasury <span className="deco">&middot; &#9830;</span></h3>
+      <div className="treas-value">847,420<span className="unit">USDC</span></div>
+      <div className="treas-delta">&#9650; +18.2% (7d)</div>
+      <div className="treas-breakdown">
+        <div className="treas-row"><span>Fees (7d)</span><b>$2,841</b></div>
+        <div className="treas-row"><span>Payouts (7d)</span><b>$1,926</b></div>
+        <div className="treas-row"><span>Holders</span><b>234</b></div>
+      </div>
+    </div>
+  </aside>;
+}
+
+// ─── APP ───
+function App() {
+  const validViews = ['overview','indices','stocks','terminal','portfolio','treasury','create'];
+  const hashView = window.location.hash.replace('#','');
+  const [view, setView] = useState(validViews.includes(hashView) ? hashView : 'overview');
+
+  useEffect(() => {
+    function onHash(){ const v = window.location.hash.replace('#',''); if(validViews.includes(v)) setView(v); }
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  const menuItems = [
+    { group:'Markets', items: [
+      { key:'overview', num:'I.', label:'Overview' },
+      { key:'indices', num:'II.', label:'Index' },
+      { key:'stocks', num:'III.', label:'Stocks' },
+    ]},
+    { group:'Trade', items: [
+      { key:'terminal', num:'IV.', label:'Terminal' },
+      { key:'portfolio', num:'V.', label:'Portfolio' },
+    ]},
+    { group:'Protocol', items: [
+      { key:'treasury', num:'VI.', label:'Treasury' },
+      { key:'create', num:'VII.', label:'Create Index' },
+    ]},
+  ];
+
+  const showRail = view === 'overview' || view === 'indices' || view === 'stocks';
+
+  return <div className={`app ${showRail ? 'has-rail' : ''}`}>
+    <aside className="nav">
+      <div className="brand">
+        <div className="brand-seal" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <circle className="glyph-line" cx="16" cy="14" r="8"/>
+            <path className="glyph-line" d="M8 22c0 0 4 5 8 5s8-5 8-5"/>
+            <path className="glyph-line" d="M12 12v4M20 12v4"/>
+            <path className="glyph-line" d="M4 14h4M24 14h4"/>
+          </svg>
+        </div>
+        <div>
+          <div className="brand-name">ATLAS</div>
+          <div className="brand-sub">Stock Index Protocol</div>
+        </div>
+      </div>
+      <div className="agent-status">
+        <div className="agent-row"><span className="agent-dot"/> Agent &middot; Online</div>
+        <div className="agent-mode">Mode &middot; {view === 'terminal' ? 'Terminal Active' : 'Ready'}</div>
+        <div className="agent-mode" style={{color:'var(--ink-mute)'}}>Session XIV &middot; 14:22 UTC</div>
+      </div>
+      <nav className="menu">
+        {menuItems.map(g => <React.Fragment key={g.group}>
+          <div className="menu-label">{g.group}</div>
+          {g.items.map(item =>
+            <div key={item.key} className={`menu-item ${view === item.key ? 'active' : ''}`} onClick={() => setView(item.key)}>
+              <span className="num">{item.num}</span> {item.label}
+            </div>
+          )}
+        </React.Fragment>)}
+      </nav>
+      <div className="nav-footer">
+        <div><span className="k">Network</span> &nbsp;Robinhood Chain</div>
+        <div><span className="k">Protocol</span> &nbsp;ATLAS Index v1</div>
+        <div><span className="k">Build</span> &nbsp;<b>v0.1.0 &middot; testnet</b></div>
+      </div>
+    </aside>
+
+    <main>
+      {view === 'overview' && <OverviewView setView={setView}/>}
+      {view === 'indices' && <IndicesView setView={setView}/>}
+      {view === 'stocks' && <StocksView/>}
+      {view === 'terminal' && <TerminalView/>}
+      {view === 'portfolio' && <PortfolioView/>}
+      {view === 'treasury' && <TreasuryView/>}
+      {view === 'create' && <CreateIndexView setView={setView}/>}
+    </main>
+
+    {showRail && <RightRail setView={setView}/>}
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

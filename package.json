@@ -1,5 +1,12 @@
 {
+  "scripts": {
+    "compile": "npx solc --bin --abi --optimize -o build contracts/IndexToken.sol contracts/IndexFactory.sol contracts/AtlasVault.sol contracts/StockPaymentVault.sol",
+    "deploy:stock-payments": "node contracts/deploy-stock-payment-vault.js"
+  },
   "dependencies": {
     "ethers": "^6.16.0"
+  },
+  "devDependencies": {
+    "solc": "^0.8.30"
   }
 }

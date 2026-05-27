@@ -1,14 +1,15 @@
 const { ethers } = require('ethers');
 const fs = require('fs');
 const path = require('path');
+const { loadLocalConfig } = require('./config-loader');
 
-const RPC = 'https://rpc.testnet.chain.robinhood.com';
-const PRIVATE_KEY = 'cf0bc00a6b1d8bc2ff6a9805bbf627042cc6b09305dad8fc528047f072918ae7';
 const VAULT_ADDRESS = '0x3130865dE0D1594E38C5cC52596712F05d93a4d5';
 
 async function main() {
-  const provider = new ethers.JsonRpcProvider(RPC);
-  const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+  const { rpc, privateKey } = loadLocalConfig();
+  if (!privateKey) throw new Error('Missing RH_PRIVATE_KEY in config.js or env');
+  const provider = new ethers.JsonRpcProvider(rpc);
+  const wallet = new ethers.Wallet(privateKey, provider);
   console.log('Deployer:', wallet.address);
 
   const balance = await provider.getBalance(wallet.address);

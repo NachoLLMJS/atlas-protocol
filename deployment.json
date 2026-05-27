@@ -15,5 +15,31 @@
   ],
   "IndexFactoryV1": "0xfba93D3DE479Bcf6d4b1eFCeC317055F9253b269",
   "factoryV2DeployedAt": "2026-05-24T18:46:46.072Z",
-  "feeSplit": "50% creator / 50% vault (LPs)"
+  "feeSplit": "50% creator / 50% vault (LPs)",
+  "StockPaymentVault": "0xcA7e4001BdCD5eC6f096d0B3a5f014Cfc1f087c5",
+  "stockPaymentDeployedAt": "2026-05-27T19:13:50.101Z",
+  "stockPaymentToken": "Robinhood testnet native gas/payment token",
+  "stockPaymentPrices": {
+    "TSLA": "187.34",
+    "AMZN": "191.75",
+    "NFLX": "634.20",
+    "AMD": "168.92",
+    "PLTR": "74.85"
+  },
+  "StockPaymentVaultERC20Deprecated": "0x4E5cC80288D0E13BC2D79a9A94dEd57E1cF43CC9",
+  "stockPaymentMode": "native",
+  "stockPaymentVaultSeeded": [
+    "TSLA: 0.5",
+    "AMZN: 0.5",
+    "NFLX: 0.5",
+    "AMD: 0.5",
+    "PLTR: 0.5"
+  ],
+  "stockPaymentNativePrices": {
+    "TSLA": "0.00018734",
+    "AMZN": "0.00019175",
+    "NFLX": "0.00063420",
+    "AMD": "0.00016892",
+    "PLTR": "0.00007485"
+  }
 }

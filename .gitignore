@@ -1,7 +1,12 @@
 config.js
 .env
+.env.*
+!.env.example
 .DS_Store
 Thumbs.db
 node_modules
 build
 .vercel
+vercel-static
+vercel-static/.vercel
+*.log

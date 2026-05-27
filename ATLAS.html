@@ -579,7 +579,7 @@ function useLivePrices() {
 // ─── CONTRACTS & CHAIN ───
 const FACTORY_ADDRESS = '0xE0136684FaA29801885e1faF619bc5C8894CA35D';
 
-const ERC20_ABI = ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)', 'function transfer(address to, uint256 amount) returns (bool)', 'function approve(address spender, uint256 amount) returns (bool)', 'function allowance(address owner, address spender) view returns (uint256)', 'function symbol() view returns (string)', 'function name() view returns (string)', 'function totalSupply() view returns (uint256)'];
+const ERC20_ABI = ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)', 'function transfer(address to, uint256 amount) returns (bool)', 'function approve(address spender, uint256 amount) returns (bool)', 'function allowance(address owner, address spender) view returns (uint256)', 'function symbol() view returns (string)', 'function name() view returns (string)', 'function totalSupply() view returns (uint256)', 'function faucet()'];
 
 const INDEX_TOKEN_ABI = [...ERC20_ABI, 'function mint(uint256 amount)', 'function burn(uint256 amount)', 'function getStocks() view returns (address[])', 'function getWeights() view returns (uint256[])', 'function creator() view returns (address)', 'function feeBps() view returns (uint256)', 'function vault() view returns (address)', 'function stockCount() view returns (uint256)', 'function stocks(uint256) view returns (address)', 'function weights(uint256) view returns (uint256)'];
 
@@ -596,6 +596,17 @@ const VAULT_ABI = [
   'function getLPCount() view returns (uint256)',
   'function lpTokenDeposits(address lp, address token) view returns (uint256)',
   'function owner() view returns (address)',
+];
+
+// ─── STOCK PAYMENT VAULT (individual stock buys with native testnet gas token) ───
+const STOCK_PAYMENT_VAULT_ADDRESS = '0xcA7e4001BdCD5eC6f096d0B3a5f014Cfc1f087c5';
+const PAYMENT_TOKEN_SYMBOL = 'Native ETH';
+const STOCK_PAYMENT_VAULT_ABI = [
+  'function buyStock(address stock, uint256 stockAmount) payable',
+  'function quoteBuy(address stock, uint256 stockAmount) view returns (uint256)',
+  'function stockPrice(address stock) view returns (uint256)',
+  'function stockEnabled(address stock) view returns (bool)',
+  'function paymentDecimals() view returns (uint8)',
 ];
 
 // Track deployed index tokens (loaded from factory on-chain)
@@ -740,7 +751,7 @@ function getSystemPrompt(userBalances) {
 1. **Buy index**: Help users buy index tokens via the AtlasVault (vault provides underlying stocks, user receives index tokens in 1 tx). User says "buy ATLAS" or "buy [index ticker]" with an amount.
 2. **Sell index**: Help users sell index tokens back to the AtlasVault (burns tokens, stocks return to vault). User says "sell ATLAS" or "sell [index ticker]".
 3. **Create index**: Help users create custom index funds (baskets of 2-5 stocks deployed as ERC-20 tokens on-chain). The creator earns a fee on every buy.
-4. **Send tokens**: Help users send stock tokens or index tokens to other wallet addresses
+4. **Stock tokens**: Show stock prices and guide users to get testnet stock tokens from the Robinhood Chain faucet. Individual stock USD/USDT buying is not deployed in this version.
 5. **Portfolio**: Show the user's current holdings
 6. **Price check**: Show current prices for stocks
 7. **General conversation + Web Search**: You have REAL web search capability via Tavily. When you receive "WEB SEARCH RESULTS" in the system message, those are REAL results from the internet. Use them to answer accurately. Include URLs/links from the results when the user asks for links. You can answer ANY topic: news, politics, recipes, tutorials, crypto, anything.
@@ -783,7 +794,7 @@ Respond with a JSON object ONLY, no markdown code blocks, just raw JSON:
 - **CRITICAL**: Set the action field AS SOON AS you have the required data. Do NOT keep chatting or asking for more confirmation. The UI will show a confirm button automatically — you do NOT need to ask the user "are you sure?" or "shall I proceed?".
   - For buy: need ticker + amount/qty → set action="buy" immediately
   - For sell: need ticker + qty → set action="sell" immediately
-  - For send: need toAddress + sendAmount + sendToken → set action="send" immediately
+  - For send: need toAddress + sendAmount + sendToken → set action="send" immediately only if the user explicitly asks to transfer tokens to another wallet
   - For create_index: need indexName + indexStocks (2-5) → set action="create_index" immediately
 - Examples of when to set action:
   - User: "buy 1 ATLAS" → action="buy", data={ticker:"ATLAS", qty:1} IMMEDIATELY
@@ -1241,7 +1252,7 @@ function OverviewView({ setView, wallet, balances, connectW, walletLoading, refr
         <div style={{fontFamily:'var(--mono)', fontSize:9.5, letterSpacing:'.26em', textTransform:'uppercase', color:'var(--blue)', marginBottom:10}}>// AI Terminal</div>
         <div style={{fontFamily:'var(--display)', fontSize:22, fontWeight:700, letterSpacing:'.04em', marginBottom:6}}>Trade with AI</div>
         <p style={{fontFamily:'var(--sans)', fontSize:12.5, color:'var(--ink-soft)', lineHeight:1.5, margin:'0 0 14px'}}>
-          Buy stocks, create index funds, check prices, send tokens. Natural language.
+          Buy index tokens, create funds, check stock prices, manage transfers. Natural language.
         </p>
         <span className="btn primary" style={{display:'inline-flex'}}>Open Terminal</span>
       </div>
@@ -1377,61 +1388,80 @@ function IndicesView({ setView, wallet, balances, refreshBalances }) {
   </>;
 }
 
-function StocksView({ wallet, balances, refreshBalances }) {
+function StocksView({ wallet, balances, refreshBalances, connectW, walletLoading }) {
   const [selected, setSelected] = useState(null);
-  const [amount, setAmount] = useState('1');
-  const [toAddr, setToAddr] = useState('');
+  const [amount, setAmount] = useState('0.01');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
 
-  const handleSend = async (stock) => {
-    if (!wallet) { alert('Connect wallet first'); return; }
-    if (!toAddr.trim() || !amount.trim()) return;
+  const handleBuyStock = async (stock) => {
+    if (!wallet) { if (connectW) await connectW(); return; }
+    const qty = Math.max(parseFloat(amount || '0'), 0);
+    if (!qty) { setResult({ ok:false, msg:'Enter a stock amount greater than 0.' }); return; }
     setBusy(true); setResult(null);
     try {
-      const contract = new ethers.Contract(stock.token, ERC20_ABI, wallet.signer);
-      const decimals = await contract.decimals();
-      const amt = ethers.parseUnits(amount, decimals);
-      const tx = await contract.transfer(toAddr.trim(), amt);
+      const stockToken = new ethers.Contract(stock.token, ERC20_ABI, wallet.signer);
+      const stockDec = await stockToken.decimals();
+      const stockAmount = ethers.parseUnits(String(qty), stockDec);
+      const paymentVault = new ethers.Contract(STOCK_PAYMENT_VAULT_ADDRESS, STOCK_PAYMENT_VAULT_ABI, wallet.signer);
+      const quote = await paymentVault.quoteBuy(stock.token, stockAmount);
+      setResult({ ok:true, msg:`Buying ${qty} ${stock.ticker} for ${ethers.formatEther(quote)} native ETH...` });
+      const tx = await paymentVault.buyStock(stock.token, stockAmount, { value: quote });
       await tx.wait();
-      if (refreshBalances) refreshBalances();
-      setResult({ ok: true, msg: `Sent ${amount} ${stock.ticker} successfully!` });
-    } catch (err) { setResult({ ok: false, msg: err.reason || err.message }); }
+      if (refreshBalances) await refreshBalances();
+      setResult({ ok:true, msg:`Bought ${qty} ${stock.ticker} with native ETH. Tx: ${tx.hash.slice(0,14)}...` });
+    } catch (err) { setResult({ ok:false, msg: err.reason || err.shortMessage || err.message }); }
     setBusy(false);
   };
 
   return <>
     <div className="crumbs">
       <div className="path">Dashboard / <b>Stocks</b></div>
+      <div className="actions">
+        {wallet
+          ? <button className="btn ghost" onClick={refreshBalances}>{PAYMENT_TOKEN_SYMBOL}: {(balances.RBH || 0).toFixed(5)}</button>
+          : <button className="btn ghost" onClick={connectW} disabled={walletLoading}>{walletLoading ? 'Connecting...' : 'Connect Wallet'}</button>
+        }
+      </div>
     </div>
     <div className="sec-title" style={{marginTop:18}}>
-      <h2>Available Stocks</h2>
+      <h2>Buy Stocks</h2>
       <span className="ornament">&#10022; &#10022; &#10022;</span>
-      <span className="right">{STOCKS.length} tokens on Robinhood Chain</span>
+      <span className="right">Powered by StockPaymentVault · {PAYMENT_TOKEN_SYMBOL}</span>
+    </div>
+    <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', border:'1px solid var(--rule)', padding:'10px 12px', marginBottom:16, lineHeight:1.6}}>
+      Individual stock buys are now separate from LP liquidity. Buy stock tokens directly with the Robinhood testnet native gas/payment token; use Provide Liquidity only if you want to deposit stocks into AtlasVault.
     </div>
     <div className="stocks-grid">
       {STOCKS.map(s => {
         if (s.live) {
           const isSelected = selected === s.ticker;
           const bal = balances[s.ticker] || 0;
+          const qty = Math.max(parseFloat(amount || '0'), 0);
+          const estimatedUsd = qty * s.price;
           return <div key={s.ticker} className="stock-card" style={{cursor:'pointer', border: isSelected ? '2px solid var(--blue)' : undefined}} onClick={() => { setSelected(isSelected ? null : s.ticker); setResult(null); }}>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
               <div className="sc-ticker">{s.ticker}</div>
-              <span style={{fontFamily:'var(--mono)', fontSize:'8px', letterSpacing:'.18em', textTransform:'uppercase', color:'var(--green)', border:'1px solid var(--green)', padding:'2px 6px'}}>Live</span>
+              <span style={{fontFamily:'var(--mono)', fontSize:'8px', letterSpacing:'.18em', textTransform:'uppercase', color:'var(--green)', border:'1px solid var(--green)', padding:'2px 6px'}}>Buyable</span>
             </div>
             <div className="sc-name">{s.name}</div>
             <div className="sc-price">${s.price.toFixed(2)}</div>
             <div className={`sc-change ${s.change >= 0 ? 'up' : 'dn'}`}>{s.change >= 0 ? '\u25b2' : '\u25bc'} {s.change > 0 ? '+' : ''}{s.change}%</div>
-            <div style={{fontFamily:'var(--mono)', fontSize:10, marginTop:8, color:'var(--ink-soft)'}}>Balance: <b>{bal.toFixed(4)}</b></div>
+            <div style={{fontFamily:'var(--mono)', fontSize:10, marginTop:8, color:'var(--ink-soft)'}}>Balance: <b>{bal.toFixed(4)}</b> {s.ticker}</div>
             {isSelected && <div style={{marginTop:10, borderTop:'1px solid var(--rule)', paddingTop:10}} onClick={e => e.stopPropagation()}>
-              <div style={{fontFamily:'var(--mono)', fontSize:10, marginBottom:6, color:'var(--ink-soft)'}}>Send {s.ticker} to address:</div>
-              <input value={toAddr} onChange={e => setToAddr(e.target.value)} placeholder="0x..." style={{width:'100%', padding:'6px 8px', border:'1px solid var(--ink)', fontFamily:'var(--mono)', fontSize:11, background:'var(--paper)', marginBottom:6, boxSizing:'border-box'}} />
+              <div style={{fontFamily:'var(--mono)', fontSize:10, marginBottom:6, color:'var(--ink-soft)'}}>Buy {s.ticker} with native testnet ETH</div>
               <div style={{display:'flex', gap:6, alignItems:'center'}}>
-                <input value={amount} onChange={e => setAmount(e.target.value)} placeholder="Amount" style={{width:70, padding:'6px 8px', border:'1px solid var(--ink)', fontFamily:'var(--mono)', fontSize:11, background:'var(--paper)'}} />
-                <button className="btn primary" style={{fontSize:10, padding:'5px 14px'}} onClick={() => handleSend(s)} disabled={busy}>{busy ? '...' : 'Send'}</button>
+                <input value={amount} onChange={e => setAmount(e.target.value)} placeholder="Qty" style={{width:76, padding:'6px 8px', border:'1px solid var(--ink)', fontFamily:'var(--mono)', fontSize:11, background:'var(--paper)'}} />
+                <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', flex:1}}>
+                  Market quote ~ ${estimatedUsd.toFixed(2)} · paid on-chain in native ETH
+                </div>
+                <button className="btn primary" style={{fontSize:10, padding:'5px 14px'}} onClick={() => handleBuyStock(s)} disabled={busy}>{busy ? '...' : 'Buy'}</button>
+              </div>
+              <div style={{fontFamily:'var(--mono)', fontSize:9, marginTop:7, color:'var(--ink-mute)', lineHeight:1.5}}>
+                Contract: {STOCK_PAYMENT_VAULT_ADDRESS.slice(0,6)}...{STOCK_PAYMENT_VAULT_ADDRESS.slice(-4)} · native-payable testnet vault
               </div>
               {result && <div style={{fontFamily:'var(--mono)', fontSize:10, marginTop:6, color: result.ok ? 'var(--green)' : 'var(--red)'}}>{result.msg}</div>}
-              <a href={RH_EXPLORER + s.token} target="_blank" rel="noopener noreferrer" style={{fontFamily:'var(--mono)', fontSize:'9px', letterSpacing:'.14em', color:'var(--blue)', marginTop:8, display:'block', textTransform:'uppercase', textDecoration:'none'}}>View on Explorer &#8599;</a>
+              <a href={RH_EXPLORER + s.token} target="_blank" rel="noopener noreferrer" style={{fontFamily:'var(--mono)', fontSize:'9px', letterSpacing:'.14em', color:'var(--blue)', marginTop:8, display:'block', textTransform:'uppercase', textDecoration:'none'}}>View Stock Token &#8599;</a>
             </div>}
           </div>;
         }
@@ -1455,7 +1485,7 @@ function TerminalView({ wallet, balances, refreshBalances, connectW, walletLoadi
     { type:'system', text:'Atlas Terminal \u00b7 v0.1.0 \u00b7 Robinhood Chain Testnet' },
     { type:'system', text: walletStatus },
     { type:'spacer' },
-    { type:'agent', text:'Welcome to Atlas. I can help you buy or sell tokenized stocks, create custom index funds, send tokens, or answer any questions. What would you like to do?' },
+    { type:'agent', text:'Welcome to Atlas. I can help you buy/sell index tokens, check tokenized stock prices, create custom index funds, manage transfers, or answer questions. What would you like to do?' },
   ]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -2189,6 +2219,556 @@ function CreateIndexView({ setView, wallet }) {
   </>;
 }
 
+// ─── DOCS VIEW ───
+function DocsView({ setView }) {
+  const [activeSection, setActiveSection] = useState('overview');
+
+  const sectionStyle = { marginBottom: 48 };
+  const h2Style = { fontFamily:'var(--display)', fontWeight:700, fontSize:'clamp(24px,3vw,36px)', letterSpacing:'.04em', textTransform:'uppercase', lineHeight:1, margin:'0 0 20px', color:'var(--ink)' };
+  const h3Style = { fontFamily:'var(--display)', fontWeight:600, fontSize:18, letterSpacing:'.1em', textTransform:'uppercase', margin:'32px 0 12px', color:'var(--ink)', borderBottom:'1px solid var(--rule)', paddingBottom:8 };
+  const pStyle = { fontFamily:'var(--sans)', fontSize:14, lineHeight:1.7, color:'var(--ink-soft)', maxWidth:720, marginBottom:16 };
+  const codeBlockStyle = { fontFamily:'var(--mono)', fontSize:11, lineHeight:1.7, background:'var(--paper-2)', border:'1px solid var(--rule)', padding:'16px 20px', overflow:'auto', marginBottom:20, whiteSpace:'pre', color:'var(--ink)' };
+  const tableStyle = { width:'100%', borderCollapse:'collapse', fontFamily:'var(--mono)', fontSize:11, marginBottom:20 };
+  const thStyle = { textAlign:'left', padding:'10px 14px', borderBottom:'2px solid var(--ink)', fontFamily:'var(--display)', fontSize:11, letterSpacing:'.14em', textTransform:'uppercase', fontWeight:600 };
+  const tdStyle = { padding:'10px 14px', borderBottom:'1px solid var(--rule)', verticalAlign:'top' };
+  const chipStyle = { display:'inline-block', padding:'3px 10px', border:'1px solid var(--blue)', color:'var(--blue)', fontFamily:'var(--mono)', fontSize:9, letterSpacing:'.14em', textTransform:'uppercase', marginRight:8, marginBottom:6 };
+  const linkStyle = { color:'var(--blue)', textDecoration:'none', borderBottom:'1px solid var(--blue-mist)' };
+
+  const sections = [
+    { id:'overview', label:'Overview' },
+    { id:'architecture', label:'Architecture' },
+    { id:'contracts', label:'Smart Contracts' },
+    { id:'terminal-ai', label:'AI Terminal' },
+    { id:'buy-sell', label:'Buy & Sell Flow' },
+    { id:'liquidity', label:'Liquidity Providers' },
+    { id:'fee-model', label:'Fee Model' },
+    { id:'create-index', label:'Creating an Index' },
+    { id:'api', label:'API & Integrations' },
+    { id:'security', label:'Security' },
+    { id:'faq', label:'FAQ' },
+  ];
+
+  const scrollTo = (id) => {
+    setActiveSection(id);
+    document.getElementById('doc-' + id)?.scrollIntoView({ behavior:'smooth', block:'start' });
+  };
+
+  return <>
+    <div className="crumbs"><div className="path">Protocol / <b>Documentation</b></div></div>
+    <div className="sec-title" style={{marginTop:18}}><h2>Documentation</h2><span className="ornament">&#10022; &#10022; &#10022;</span></div>
+
+    <div style={{display:'grid', gridTemplateColumns:'200px 1fr', gap:32, marginTop:24}}>
+      {/* Sidebar TOC */}
+      <div style={{position:'sticky', top:20, alignSelf:'start'}}>
+        <div style={{fontFamily:'var(--display)', fontSize:11, letterSpacing:'.2em', textTransform:'uppercase', color:'var(--ink-soft)', marginBottom:14, paddingBottom:8, borderBottom:'2px solid var(--ink)'}}>Contents</div>
+        {sections.map((s, i) => <div key={s.id}
+          onClick={() => scrollTo(s.id)}
+          style={{
+            fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.12em', textTransform:'uppercase',
+            padding:'8px 12px', cursor:'pointer', borderLeft: activeSection === s.id ? '2px solid var(--blue)' : '2px solid transparent',
+            color: activeSection === s.id ? 'var(--blue)' : 'var(--ink-soft)',
+            transition:'all .15s', background: activeSection === s.id ? 'rgba(94,121,178,.05)' : 'transparent',
+          }}
+        ><span style={{color:'var(--ink-mute)', marginRight:8}}>{String(i+1).padStart(2,'0')}</span>{s.label}</div>)}
+        <div style={{marginTop:20, padding:'10px 12px', border:'1px solid var(--rule)', fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-mute)', letterSpacing:'.1em'}}>
+          v0.1.0 &middot; Testnet<br/>Chain ID: 46630<br/>Robinhood Chain
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{maxWidth:780}}>
+
+        {/* ─── OVERVIEW ─── */}
+        <div id="doc-overview" style={sectionStyle}>
+          <h2 style={h2Style}>Protocol <span style={{fontFamily:'"IBM Plex Serif"', fontStyle:'italic', fontWeight:400, color:'var(--blue)', textTransform:'none'}}>Overview</span></h2>
+          <p style={pStyle}>
+            ATLAS is a non-custodial protocol for creating and trading <b>tokenized stock index funds</b> on Robinhood Chain (Arbitrum Orbit L2). It enables any participant to bundle tokenized equities into a single ERC-20 token &mdash; an on-chain equivalent of an ETF.
+          </p>
+          <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:0, border:'1px solid var(--ink)', marginBottom:24}}>
+            {[
+              { role:'Index Creator', desc:'Bundles stocks into a custom index, deploys ERC-20 on-chain, earns 50% of fees on every buy/sell.', action:'Create Index' },
+              { role:'Liquidity Provider', desc:'Deposits stock tokens into the AtlasVault. Earns 50% of all index fees proportional to deposit.', action:'Provide Liquidity' },
+              { role:'Investor / Buyer', desc:'Acquires index tokens for diversified exposure in one transaction. Can redeem anytime for underlying stocks.', action:'Buy Index' },
+            ].map((r, i) => <div key={i} style={{padding:'20px 18px', borderRight: i < 2 ? '1px solid var(--ink)' : 'none'}}>
+              <div style={{fontFamily:'var(--display)', fontSize:13, fontWeight:600, letterSpacing:'.14em', textTransform:'uppercase', marginBottom:8}}>{r.role}</div>
+              <p style={{fontFamily:'var(--sans)', fontSize:12, lineHeight:1.6, color:'var(--ink-soft)', marginBottom:12}}>{r.desc}</p>
+              <span style={chipStyle}>{r.action}</span>
+            </div>)}
+          </div>
+          <div style={{...codeBlockStyle, fontSize:12}}>
+{`User Journey
+─────────────────────────────────────────────────────────
+1. GET STOCKS      Claim from RH Chain faucet (5 of each per 24h)
+2. CREATE INDEX    Select stocks + weights + fee → deploy ERC-20
+   or PROVIDE LP   Deposit stocks into AtlasVault
+3. BUY INDEX       One-click purchase via AtlasVault
+4. EARN FEES       50% creator / 50% LPs — automatic on-chain
+5. SELL / REDEEM   Burn index token → receive underlying stocks`}
+          </div>
+        </div>
+
+        {/* ─── ARCHITECTURE ─── */}
+        <div id="doc-architecture" style={sectionStyle}>
+          <h2 style={h2Style}>System <span style={{fontFamily:'"IBM Plex Serif"', fontStyle:'italic', fontWeight:400, color:'var(--blue)', textTransform:'none'}}>Architecture</span></h2>
+          <p style={pStyle}>ATLAS is a single-page React application backed by on-chain smart contracts and serverless APIs.</p>
+          <div style={codeBlockStyle}>
+{`┌───────────────────────────────────────────────────────────┐
+│                    ATLAS FRONTEND                          │
+│               React 18 SPA (single HTML file)              │
+│                    Hosted on Vercel                         │
+└──────────┬──────────────┬──────────────┬──────────────────┘
+           │              │              │
+     ┌─────▼─────┐ ┌─────▼─────┐ ┌─────▼──────┐
+     │  MetaMask  │ │  /api/    │ │  OpenAI +  │
+     │  Wallet    │ │  prices   │ │  Tavily    │
+     │  (ethers)  │ │  (Yahoo)  │ │  (AI Term) │
+     └─────┬─────┘ └───────────┘ └────────────┘
+           │
+═══════════╪════════════════════════════════════
+ON-CHAIN   │   Robinhood Chain · Chain ID 46630
+═══════════╪════════════════════════════════════
+           │
+    ┌──────▼───────────────────────────────────┐
+    │           IndexFactory v2                 │
+    │  createIndex() → deploys IndexToken       │
+    │  Passes vault address for fee split       │
+    └──────────────┬────────────────────────────┘
+                   │ deploys
+    ┌──────────────▼────────────────────────────┐
+    │         IndexToken (ERC-20)                │
+    │  mint()  → deposit stocks, receive index   │
+    │  burn()  → return index, receive stocks    │
+    │  Fee: 50% creator / 50% vault              │
+    └──────────────┬────────────────────────────┘
+                   │ interacts
+    ┌──────────────▼────────────────────────────┐
+    │           AtlasVault                       │
+    │  buyIndex()   One-click purchase           │
+    │  sellIndex()  Redemption                   │
+    │  deposit()    LP adds liquidity            │
+    │  withdraw()   LP removes liquidity         │
+    └──────────────┬────────────────────────────┘
+                   │
+    ┌──────────────▼────────────────────────────┐
+    │    RH Tokenized Stocks (ERC-20)            │
+    │  TSLA · AMZN · NFLX · AMD · PLTR          │
+    │  Official Robinhood Chain testnet tokens    │
+    └───────────────────────────────────────────┘`}
+          </div>
+        </div>
+
+        {/* ─── SMART CONTRACTS ─── */}
+        <div id="doc-contracts" style={sectionStyle}>
+          <h2 style={h2Style}>Smart <span style={{fontFamily:'"IBM Plex Serif"', fontStyle:'italic', fontWeight:400, color:'var(--blue)', textTransform:'none'}}>Contracts</span></h2>
+          <p style={pStyle}>ATLAS currently runs through <b>three launched core contracts</b>. Together they cover the protocol logic: creating index funds, routing index buys/sells through liquidity, and buying individual stock tokens with Robinhood testnet native ETH.</p>
+
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Core Contract</th><th style={thStyle}>Protocol Role</th><th style={thStyle}>Main Calls</th></tr></thead>
+            <tbody>
+              <tr><td style={tdStyle}>IndexFactory v2</td><td style={tdStyle}>Launches custom index funds and records all deployed index addresses.</td><td style={tdStyle}><code>createIndex()</code>, <code>totalIndices()</code></td></tr>
+              <tr><td style={tdStyle}>AtlasVault</td><td style={tdStyle}>Holds LP stock liquidity and executes one-click index buys/sells.</td><td style={tdStyle}><code>buyIndex()</code>, <code>sellIndex()</code>, <code>deposit()</code></td></tr>
+              <tr><td style={tdStyle}>StockPaymentVault</td><td style={tdStyle}>Lets users buy individual tokenized stocks with the native testnet gas/payment token, separate from LP deposits.</td><td style={tdStyle}><code>buyStock() payable</code>, <code>quoteBuy()</code>, <code>setStock()</code></td></tr>
+            </tbody>
+          </table>
+
+          <h3 style={h3Style}>1. IndexFactory v2</h3>
+          <p style={pStyle}>Factory contract that deploys new IndexToken instances. Anyone can create a custom index fund. This is one of the three launched core contracts.</p>
+          <div style={codeBlockStyle}>
+{`function createIndex(
+    string  _name,        // "Tech Titans"
+    string  _symbol,      // "TECH"
+    address[] _stocks,    // [TSLA_addr, AMZN_addr, ...]
+    uint256[] _weights,   // [4000, 3000, 3000] (bps, sum=10000)
+    uint256 _feeBps       // 100 = 1% fee
+) → returns address       // deployed IndexToken address`}
+          </div>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Function</th><th style={thStyle}>Description</th></tr></thead>
+            <tbody>
+              <tr><td style={tdStyle}><code>createIndex()</code></td><td style={tdStyle}>Deploy a new IndexToken with vault fee split</td></tr>
+              <tr><td style={tdStyle}><code>totalIndices()</code></td><td style={tdStyle}>Count of all deployed indices</td></tr>
+              <tr><td style={tdStyle}><code>getCreatorIndices(addr)</code></td><td style={tdStyle}>List indices by creator address</td></tr>
+              <tr><td style={tdStyle}><code>allIndices(i)</code></td><td style={tdStyle}>Get index address by position</td></tr>
+              <tr><td style={tdStyle}><code>setVault(addr)</code></td><td style={tdStyle}>Update vault address (owner only)</td></tr>
+            </tbody>
+          </table>
+
+          <h3 style={h3Style}>IndexToken (ERC-20 generated by IndexFactory)</h3>
+          <p style={pStyle}>Each index fund is its own ERC-20 token generated by IndexFactory. It is the per-index token template: composition (stocks + weights) is immutable after deployment. It is deployed by the factory for every new fund, but the three standing protocol contracts are IndexFactory, AtlasVault, and StockPaymentVault.</p>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Function</th><th style={thStyle}>Description</th></tr></thead>
+            <tbody>
+              <tr><td style={tdStyle}><code>mint(amount)</code></td><td style={tdStyle}>Deposit proportional stocks, receive index tokens. Fee split: 50% creator / 50% vault.</td></tr>
+              <tr><td style={tdStyle}><code>burn(amount)</code></td><td style={tdStyle}>Return index tokens, receive proportional underlying stocks.</td></tr>
+              <tr><td style={tdStyle}><code>getStocks()</code></td><td style={tdStyle}>Returns array of stock token addresses in the index</td></tr>
+              <tr><td style={tdStyle}><code>getWeights()</code></td><td style={tdStyle}>Returns array of weights in basis points (sum = 10000)</td></tr>
+              <tr><td style={tdStyle}><code>creator</code></td><td style={tdStyle}>Address that deployed the index and receives 50% of fees</td></tr>
+              <tr><td style={tdStyle}><code>feeBps</code></td><td style={tdStyle}>Fee in basis points (immutable, max 500 = 5%)</td></tr>
+            </tbody>
+          </table>
+
+          <h3 style={h3Style}>2. AtlasVault</h3>
+          <p style={pStyle}>Liquidity vault enabling one-click index purchases. LPs deposit tokenized stocks, buyers acquire indices without sourcing each stock individually. This is one of the three launched core contracts.</p>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Function</th><th style={thStyle}>Description</th></tr></thead>
+            <tbody>
+              <tr><td style={tdStyle}><code>deposit(token, amount)</code></td><td style={tdStyle}>LP deposits stock tokens into vault</td></tr>
+              <tr><td style={tdStyle}><code>withdraw(token, amount)</code></td><td style={tdStyle}>LP withdraws stock tokens from vault</td></tr>
+              <tr><td style={tdStyle}><code>buyIndex(indexToken, amount)</code></td><td style={tdStyle}>Buyer purchases index: vault approves stocks → calls mint → transfers index to buyer</td></tr>
+              <tr><td style={tdStyle}><code>sellIndex(indexToken, amount)</code></td><td style={tdStyle}>Buyer sells index: transfers index to vault → calls burn → stocks return to vault</td></tr>
+              <tr><td style={tdStyle}><code>getVaultBalance(token)</code></td><td style={tdStyle}>Check vault's balance of a specific stock token</td></tr>
+            </tbody>
+          </table>
+
+          <h3 style={h3Style}>3. StockPaymentVault</h3>
+          <p style={pStyle}>Native-payable vault for buying individual tokenized stocks with Robinhood testnet native ETH. This contract is separate from the LP flow: users buy stock exposure here, while liquidity providers still use AtlasVault deposits.</p>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Function</th><th style={thStyle}>Description</th></tr></thead>
+            <tbody>
+              <tr><td style={tdStyle}><code>buyStock(stock, amount) payable</code></td><td style={tdStyle}>User sends native testnet ETH and receives the selected stock token from StockPaymentVault liquidity</td></tr>
+              <tr><td style={tdStyle}><code>quoteBuy(stock, amount)</code></td><td style={tdStyle}>Returns the required native-token payment for a given stock amount</td></tr>
+              <tr><td style={tdStyle}><code>setStock(stock, price, enabled)</code></td><td style={tdStyle}>Owner configures buyable stocks and their native-token demo prices</td></tr>
+              <tr><td style={tdStyle}><code>withdrawToken(token, to, amount)</code></td><td style={tdStyle}>Owner treasury/liquidity management for stock tokens</td></tr>
+              <tr><td style={tdStyle}><code>withdrawNative(to, amount)</code></td><td style={tdStyle}>Owner treasury management for collected native payments</td></tr>
+            </tbody>
+          </table>
+
+          <h3 style={h3Style}>Deployed Addresses</h3>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Contract</th><th style={thStyle}>Address</th><th style={thStyle}>Status</th></tr></thead>
+            <tbody>
+              <tr><td style={tdStyle}>IndexFactory v2</td><td style={{...tdStyle, fontFamily:'var(--mono)', fontSize:10, wordBreak:'break-all'}}><a style={linkStyle} href="https://explorer.testnet.chain.robinhood.com/address/0xE0136684FaA29801885e1faF619bc5C8894CA35D" target="_blank">0xE013...a35D</a></td><td style={tdStyle}><span style={{color:'var(--green)'}}>Core Active</span></td></tr>
+              <tr><td style={tdStyle}>AtlasVault</td><td style={{...tdStyle, fontFamily:'var(--mono)', fontSize:10, wordBreak:'break-all'}}><a style={linkStyle} href="https://explorer.testnet.chain.robinhood.com/address/0x3130865dE0D1594E38C5cC52596712F05d93a4d5" target="_blank">0x3130...a4d5</a></td><td style={tdStyle}><span style={{color:'var(--green)'}}>Core Active</span></td></tr>
+              <tr><td style={tdStyle}>StockPaymentVault</td><td style={{...tdStyle, fontFamily:'var(--mono)', fontSize:10, wordBreak:'break-all'}}><a style={linkStyle} href="https://explorer.testnet.chain.robinhood.com/address/0xcA7e4001BdCD5eC6f096d0B3a5f014Cfc1f087c5" target="_blank">0xcA7e...87c5</a></td><td style={tdStyle}><span style={{color:'var(--green)'}}>Core Active · Native Payable</span></td></tr>
+              <tr><td style={tdStyle}>IndexFactory v1</td><td style={{...tdStyle, fontFamily:'var(--mono)', fontSize:10, wordBreak:'break-all'}}><a style={linkStyle} href="https://explorer.testnet.chain.robinhood.com/address/0xfba93D3DE479Bcf6d4b1eFCeC317055F9253b269" target="_blank">0xfba9...b269</a></td><td style={tdStyle}><span style={{color:'var(--ink-mute)'}}>Deprecated</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* ─── AI TERMINAL ─── */}
+        <div id="doc-terminal-ai" style={sectionStyle}>
+          <h2 style={h2Style}>AI Trading <span style={{fontFamily:'"IBM Plex Serif"', fontStyle:'italic', fontWeight:400, color:'var(--blue)', textTransform:'none'}}>Terminal</span></h2>
+          <p style={pStyle}>
+            The ATLAS Terminal is a <b>natural language trading interface</b> powered by GPT-4o-mini. Instead of navigating forms and dropdowns, users type what they want in plain language and the AI agent translates intent into on-chain transactions.
+          </p>
+
+          <h3 style={h3Style}>How It Works</h3>
+          <div style={codeBlockStyle}>
+{`User Input → GPT-4o-mini → Structured JSON → Confirmation UI → On-Chain Transaction
+
+┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌─────────────┐
+│  User types  │────▶│  AI Agent    │────▶│  Confirm UI  │────▶│  Blockchain │
+│  "buy 2      │     │  parses      │     │  shows tx    │     │  executes   │
+│   ATLAS"     │     │  intent →    │     │  details,    │     │  buyIndex() │
+│              │     │  JSON action │     │  user clicks │     │  via vault  │
+└─────────────┘     └──────────────┘     │  ✓ Confirm   │     └─────────────┘
+                                          └──────────────┘`}
+          </div>
+
+          <h3 style={h3Style}>Capabilities</h3>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Command (Natural Language)</th><th style={thStyle}>Action</th><th style={thStyle}>On-Chain?</th></tr></thead>
+            <tbody>
+              <tr><td style={tdStyle}>"buy 2 ATLAS"</td><td style={tdStyle}>Purchases 2 ATLAS index tokens via AtlasVault</td><td style={tdStyle}><span style={{color:'var(--green)'}}>Yes</span></td></tr>
+              <tr><td style={tdStyle}>"sell 1 ATLAS"</td><td style={tdStyle}>Redeems 1 ATLAS, receives underlying stocks</td><td style={tdStyle}><span style={{color:'var(--green)'}}>Yes</span></td></tr>
+              <tr><td style={tdStyle}>"send 5 TSLA to 0x..."</td><td style={tdStyle}>Transfers 5 TSLA tokens to specified address</td><td style={tdStyle}><span style={{color:'var(--green)'}}>Yes</span></td></tr>
+              <tr><td style={tdStyle}>"create an index with TSLA and AMZN"</td><td style={tdStyle}>Guides through index creation flow</td><td style={tdStyle}><span style={{color:'var(--green)'}}>Yes</span></td></tr>
+              <tr><td style={tdStyle}>"show my portfolio"</td><td style={tdStyle}>Displays wallet balances for all tokens</td><td style={tdStyle}>Read-only</td></tr>
+              <tr><td style={tdStyle}>"what's the price of TSLA?"</td><td style={tdStyle}>Shows live price from Yahoo Finance</td><td style={tdStyle}>Read-only</td></tr>
+              <tr><td style={tdStyle}>"latest news about Arbitrum"</td><td style={tdStyle}>Real-time web search via Tavily API</td><td style={tdStyle}>Off-chain</td></tr>
+            </tbody>
+          </table>
+
+          <h3 style={h3Style}>AI Agent Architecture</h3>
+          <p style={pStyle}>The AI agent uses a <b>dynamic system prompt</b> that is regenerated on every request. This ensures the agent always has current data:</p>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:0, border:'1px solid var(--ink)', marginBottom:20}}>
+            {[
+              { title:'Dynamic Context', items:['Current stock prices (live)', 'All deployed indices + supply', 'User wallet balances', 'Available vs unavailable stocks'] },
+              { title:'Response Pipeline', items:['GPT-4o-mini generates JSON', 'Regex fallback parser for edge cases', 'buildConfirmation() maps to UI', 'handleConfirm() executes on-chain'] },
+            ].map((col, i) => <div key={i} style={{padding:'16px 18px', borderRight: i===0 ? '1px solid var(--ink)' : 'none'}}>
+              <div style={{fontFamily:'var(--display)', fontSize:12, letterSpacing:'.14em', textTransform:'uppercase', fontWeight:600, marginBottom:10}}>{col.title}</div>
+              {col.items.map((item, j) => <div key={j} style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', padding:'4px 0', borderBottom:'1px solid var(--rule-soft)'}}>
+                <span style={{color:'var(--blue)', marginRight:8}}>&#10095;</span>{item}
+              </div>)}
+            </div>)}
+          </div>
+
+          <h3 style={h3Style}>Multilingual Support</h3>
+          <p style={pStyle}>The terminal detects the user's language and responds accordingly. The regex fallback parser handles both English and Spanish patterns:</p>
+          <div style={codeBlockStyle}>
+{`English: "buy 2 ATLAS"    → action: buy, ticker: ATLAS, qty: 2
+Spanish: "compra 2 ATLAS" → action: buy, ticker: ATLAS, qty: 2
+English: "sell 1 ATLAS"   → action: sell, ticker: ATLAS, qty: 1
+Spanish: "vende 1 ATLAS"  → action: sell, ticker: ATLAS, qty: 1`}
+          </div>
+
+          <h3 style={h3Style}>Web Search Integration</h3>
+          <p style={pStyle}>The terminal has <b>real-time web search</b> via Tavily API (8 rotating keys for rate limit management). When the user asks about news, events, or any topic, the system automatically:</p>
+          <div style={codeBlockStyle}>
+{`1. Detects search intent (keywords: "news", "latest", "what is", "who", etc.)
+2. Calls Tavily API with the user's query
+3. Injects search results into the system prompt
+4. AI incorporates real data + URLs into the response`}
+          </div>
+
+          <h3 style={h3Style}>Wallet Integration</h3>
+          <p style={pStyle}>The terminal handles wallet connection seamlessly. If a user tries to execute a trade without a connected wallet, the system automatically prompts MetaMask connection before proceeding with the transaction. A "Connect Wallet" banner is displayed at the top of the terminal when no wallet is detected.</p>
+
+          <div style={{border:'1px solid var(--blue)', padding:16, background:'rgba(94,121,178,.04)', marginBottom:20}}>
+            <div style={{fontFamily:'var(--display)', fontSize:12, fontWeight:600, letterSpacing:'.12em', textTransform:'uppercase', color:'var(--blue)', marginBottom:8}}>Try It</div>
+            <p style={{fontFamily:'var(--sans)', fontSize:13, color:'var(--ink-soft)', margin:0, lineHeight:1.6}}>
+              Open the <span style={{...linkStyle, cursor:'pointer'}} onClick={() => setView('terminal')}>Terminal</span> and try: "buy 1 ATLAS", "show my portfolio", "latest news about tokenized stocks", or "create an index with TSLA and AMZN".
+            </p>
+          </div>
+        </div>
+
+        {/* ─── BUY & SELL FLOW ─── */}
+        <div id="doc-buy-sell" style={sectionStyle}>
+          <h2 style={h2Style}>Buy & Sell <span style={{fontFamily:'"IBM Plex Serif"', fontStyle:'italic', fontWeight:400, color:'var(--blue)', textTransform:'none'}}>Flow</span></h2>
+
+          <h3 style={h3Style}>Buy Flow (One Transaction)</h3>
+          <p style={pStyle}>When a user buys an index token, the entire process happens in a single transaction through the AtlasVault. The buyer only needs to call <code>buyIndex()</code> — the vault handles everything else automatically.</p>
+          <div style={{display:'grid', gridTemplateColumns:'40px 1fr 1fr', gap:0, border:'1px solid var(--ink)', marginBottom:24}}>
+            <div style={{gridColumn:'1 / -1', padding:'12px 18px', background:'var(--paper-2)', borderBottom:'1px solid var(--ink)', fontFamily:'var(--display)', fontSize:11, letterSpacing:'.16em', textTransform:'uppercase', fontWeight:600}}>Buy Flow &mdash; <code style={{fontFamily:'var(--mono)', fontWeight:400}}>buyIndex(indexToken, amount)</code></div>
+            {[
+              { n:'1', actor:'Buyer', desc:'Calls buyIndex() on the AtlasVault with the desired index token address and amount' },
+              { n:'2', actor:'AtlasVault', desc:'Approves each underlying stock token to the IndexToken contract (proportional to weights)' },
+              { n:'3', actor:'AtlasVault', desc:'Calls mint() on the IndexToken contract' },
+              { n:'4', actor:'IndexToken', desc:'Transfers proportional stocks from vault into the index (via transferFrom)' },
+              { n:'5', actor:'IndexToken', desc:'Calculates fee and splits it: 50% minted to creator, 50% minted to vault address' },
+              { n:'6', actor:'AtlasVault', desc:'Transfers the minted index tokens to the buyer\'s wallet' },
+            ].map((step, i) => <React.Fragment key={i}>
+              <div style={{padding:'12px 8px', borderBottom:'1px solid var(--rule)', fontFamily:'var(--display)', fontSize:13, color:'var(--blue)', textAlign:'center', display:'grid', placeItems:'center'}}>{step.n}</div>
+              <div style={{padding:'12px 14px', borderBottom:'1px solid var(--rule)', borderLeft:'1px solid var(--rule)', fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--ink)', fontWeight:500}}>{step.actor}</div>
+              <div style={{padding:'12px 14px', borderBottom:'1px solid var(--rule)', borderLeft:'1px solid var(--rule)', fontFamily:'var(--sans)', fontSize:12, color:'var(--ink-soft)', lineHeight:1.5}}>{step.desc}</div>
+            </React.Fragment>)}
+            <div style={{gridColumn:'1 / -1', padding:'12px 18px', background:'rgba(59,140,110,.06)', fontFamily:'var(--mono)', fontSize:11, color:'var(--green)', letterSpacing:'.08em'}}>
+              Result: Buyer receives index tokens, fully backed 1:1 by underlying stocks
+            </div>
+          </div>
+
+          <h3 style={h3Style}>Sell Flow (Redemption)</h3>
+          <p style={pStyle}>When a user sells (redeems) an index token, the process reverses. The user first approves the vault to spend their index tokens, then calls <code>sellIndex()</code>. The underlying stocks are returned to the vault, making them available for future buyers.</p>
+          <div style={{display:'grid', gridTemplateColumns:'40px 1fr 1fr', gap:0, border:'1px solid var(--ink)', marginBottom:24}}>
+            <div style={{gridColumn:'1 / -1', padding:'12px 18px', background:'var(--paper-2)', borderBottom:'1px solid var(--ink)', fontFamily:'var(--display)', fontSize:11, letterSpacing:'.16em', textTransform:'uppercase', fontWeight:600}}>Sell Flow &mdash; <code style={{fontFamily:'var(--mono)', fontWeight:400}}>sellIndex(indexToken, amount)</code></div>
+            {[
+              { n:'1', actor:'Seller', desc:'Approves the AtlasVault to spend their index tokens' },
+              { n:'2', actor:'Seller', desc:'Calls sellIndex() on the AtlasVault with index token address and amount' },
+              { n:'3', actor:'AtlasVault', desc:'Transfers index tokens from seller to vault (via transferFrom)' },
+              { n:'4', actor:'AtlasVault', desc:'Calls burn() on the IndexToken contract' },
+              { n:'5', actor:'IndexToken', desc:'Burns the index tokens and releases proportional underlying stocks back to the vault' },
+            ].map((step, i) => <React.Fragment key={i}>
+              <div style={{padding:'12px 8px', borderBottom:'1px solid var(--rule)', fontFamily:'var(--display)', fontSize:13, color:'var(--blue)', textAlign:'center', display:'grid', placeItems:'center'}}>{step.n}</div>
+              <div style={{padding:'12px 14px', borderBottom:'1px solid var(--rule)', borderLeft:'1px solid var(--rule)', fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--ink)', fontWeight:500}}>{step.actor}</div>
+              <div style={{padding:'12px 14px', borderBottom:'1px solid var(--rule)', borderLeft:'1px solid var(--rule)', fontFamily:'var(--sans)', fontSize:12, color:'var(--ink-soft)', lineHeight:1.5}}>{step.desc}</div>
+            </React.Fragment>)}
+            <div style={{gridColumn:'1 / -1', padding:'12px 18px', background:'rgba(59,140,110,.06)', fontFamily:'var(--mono)', fontSize:11, color:'var(--green)', letterSpacing:'.08em'}}>
+              Result: Stocks recycled back into vault liquidity pool for future index purchases
+            </div>
+          </div>
+
+          <h3 style={h3Style}>Key Properties</h3>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:0, border:'1px solid var(--ink)', marginBottom:20}}>
+            {[
+              { title:'Atomic', desc:'The entire buy or sell operation completes in a single transaction. If any step fails, the whole operation reverts — no partial execution.' },
+              { title:'1:1 Backed', desc:'Every index token is always fully backed by the underlying stock tokens. There is no fractional reserve or synthetic exposure.' },
+              { title:'Recyclable Liquidity', desc:'When an index is sold, the underlying stocks return to the vault. This means vault liquidity is never permanently consumed — it circulates.' },
+              { title:'No Slippage', desc:'Index tokens are minted/burned at exact proportional weights. There is no AMM curve, no slippage, and no price impact.' },
+            ].map((item, i) => <div key={i} style={{padding:'16px 14px', borderRight: i % 2 === 0 ? '1px solid var(--ink)' : 'none', borderBottom: i < 2 ? '1px solid var(--ink)' : 'none'}}>
+              <div style={{fontFamily:'var(--display)', fontSize:12, fontWeight:600, letterSpacing:'.12em', textTransform:'uppercase', marginBottom:8}}>{item.title}</div>
+              <p style={{fontFamily:'var(--sans)', fontSize:11, lineHeight:1.6, color:'var(--ink-soft)', margin:0}}>{item.desc}</p>
+            </div>)}
+          </div>
+        </div>
+
+        {/* ─── LIQUIDITY PROVIDERS ─── */}
+        <div id="doc-liquidity" style={sectionStyle}>
+          <h2 style={h2Style}>Liquidity <span style={{fontFamily:'"IBM Plex Serif"', fontStyle:'italic', fontWeight:400, color:'var(--blue)', textTransform:'none'}}>Providers</span></h2>
+          <p style={pStyle}>
+            Liquidity Providers (LPs) are the backbone of the ATLAS protocol. They deposit tokenized stocks into the AtlasVault, enabling buyers to acquire indices in a single transaction. In return, LPs earn <b>50% of all index fees</b>.
+          </p>
+
+          <h3 style={h3Style}>LP Lifecycle</h3>
+          <div style={codeBlockStyle}>
+{`1. DEPOSIT      LP approves + deposits stock tokens into AtlasVault
+                 deposit(TSLA_address, 10e18) → 10 TSLA into vault
+
+2. EARN         When anyone buys an index, fee is split:
+                 50% → index creator (minted as index tokens)
+                 50% → vault address (distributable to LPs)
+
+3. WITHDRAW     LP can withdraw deposited stocks anytime
+                 withdraw(TSLA_address, 5e18) → 5 TSLA back to LP`}
+          </div>
+
+          <h3 style={h3Style}>Why Provide Liquidity?</h3>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:0, border:'1px solid var(--ink)', marginBottom:20}}>
+            {[
+              { title:'Passive Income', desc:'Earn 50% of all index trading fees automatically. No active management required.' },
+              { title:'Full Custody', desc:'Withdraw your deposited stocks at any time. No lock-up periods, no vesting schedules.' },
+              { title:'Protocol Growth', desc:'More liquidity = more indices can be created = more fees generated = more LP income.' },
+            ].map((item, i) => <div key={i} style={{padding:'16px 14px', borderRight: i < 2 ? '1px solid var(--ink)' : 'none'}}>
+              <div style={{fontFamily:'var(--display)', fontSize:12, fontWeight:600, letterSpacing:'.12em', textTransform:'uppercase', marginBottom:8}}>{item.title}</div>
+              <p style={{fontFamily:'var(--sans)', fontSize:11, lineHeight:1.6, color:'var(--ink-soft)', margin:0}}>{item.desc}</p>
+            </div>)}
+          </div>
+        </div>
+
+        {/* ─── FEE MODEL ─── */}
+        <div id="doc-fee-model" style={sectionStyle}>
+          <h2 style={h2Style}>Fee <span style={{fontFamily:'"IBM Plex Serif"', fontStyle:'italic', fontWeight:400, color:'var(--blue)', textTransform:'none'}}>Model</span></h2>
+          <p style={pStyle}>Every index has a creator-defined fee (max 5%). This fee is charged on every mint (buy) and split on-chain:</p>
+          <div style={codeBlockStyle}>
+{`                  Index Fee (e.g. 1%)
+                        │
+              ┌─────────┴─────────┐
+              │                   │
+         50% Creator         50% Vault (LPs)
+              │                   │
+       Index tokens          Index tokens
+       minted to             minted to
+       creator wallet        vault address
+
+Example: User buys 10 tokens of index with 1% fee
+─────────────────────────────────────────────────
+  User receives:     9.90 index tokens
+  Creator receives:  0.05 index tokens (50% of 0.10 fee)
+  Vault receives:    0.05 index tokens (50% of 0.10 fee)`}
+          </div>
+          <p style={pStyle}>Fees are <b>immutable</b> — set once at index creation and cannot be changed. This guarantees predictability for all participants. The fee is implemented directly in the IndexToken's <code>mint()</code> function in Solidity.</p>
+        </div>
+
+        {/* ─── CREATING AN INDEX ─── */}
+        <div id="doc-create-index" style={sectionStyle}>
+          <h2 style={h2Style}>Creating an <span style={{fontFamily:'"IBM Plex Serif"', fontStyle:'italic', fontWeight:400, color:'var(--blue)', textTransform:'none'}}>Index</span></h2>
+          <p style={pStyle}>Anyone can create a custom stock index fund. The process deploys a real ERC-20 smart contract on Robinhood Chain.</p>
+
+          <h3 style={h3Style}>Steps</h3>
+          <div style={{display:'grid', gridTemplateColumns:'40px 1fr', gap:'0 14px', marginBottom:20}}>
+            {[
+              { n:'01', text:'Navigate to Create Index (VII) in the sidebar menu' },
+              { n:'02', text:'Enter an index name (e.g. "Tech Titans") and ticker symbol (e.g. "TECH")' },
+              { n:'03', text:'Select 2-5 tokenized stocks from the available options (TSLA, AMZN, NFLX, AMD, PLTR)' },
+              { n:'04', text:'Weights are distributed equally by default. Set a creator fee (0-5%)' },
+              { n:'05', text:'Click Deploy — MetaMask will prompt for transaction confirmation' },
+              { n:'06', text:'Index deploys as an ERC-20 token. It appears immediately in the Indices section' },
+            ].map(s => <React.Fragment key={s.n}>
+              <div style={{fontFamily:'var(--display)', fontSize:12, color:'var(--blue)', letterSpacing:'.1em', padding:'8px 0', borderBottom:'1px solid var(--rule)'}}>{s.n}</div>
+              <div style={{fontFamily:'var(--sans)', fontSize:13, color:'var(--ink-soft)', padding:'8px 0', borderBottom:'1px solid var(--rule)', lineHeight:1.5}}>{s.text}</div>
+            </React.Fragment>)}
+          </div>
+
+          <h3 style={h3Style}>Constraints</h3>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Parameter</th><th style={thStyle}>Constraint</th></tr></thead>
+            <tbody>
+              <tr><td style={tdStyle}>Stocks per index</td><td style={tdStyle}>Minimum 2, maximum 5</td></tr>
+              <tr><td style={tdStyle}>Weights</td><td style={tdStyle}>Must sum to 10,000 basis points (100%)</td></tr>
+              <tr><td style={tdStyle}>Fee</td><td style={tdStyle}>Maximum 500 bps (5%)</td></tr>
+              <tr><td style={tdStyle}>Mutability</td><td style={tdStyle}>Composition and fees are immutable after deployment</td></tr>
+              <tr><td style={tdStyle}>Available stocks</td><td style={tdStyle}>TSLA, AMZN, NFLX, AMD, PLTR (RH Chain testnet)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* ─── API & INTEGRATIONS ─── */}
+        <div id="doc-api" style={sectionStyle}>
+          <h2 style={h2Style}>API & <span style={{fontFamily:'"IBM Plex Serif"', fontStyle:'italic', fontWeight:400, color:'var(--blue)', textTransform:'none'}}>Integrations</span></h2>
+
+          <h3 style={h3Style}>Price API</h3>
+          <p style={pStyle}>Stock prices are fetched via a Vercel serverless function that proxies Yahoo Finance to avoid CORS restrictions.</p>
+          <div style={codeBlockStyle}>
+{`GET /api/prices?symbols=TSLA,AMZN,NFLX,AMD,PLTR
+
+Response: {
+  "TSLA": { "price": 187.34, "change": 2.1, "name": "Tesla Inc" },
+  "AMZN": { "price": 185.50, "change": -0.3, "name": "Amazon" },
+  ...
+}
+
+Refresh interval: 30 seconds (frontend auto-refresh)`}
+          </div>
+
+          <h3 style={h3Style}>AI Integration (OpenAI)</h3>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Parameter</th><th style={thStyle}>Value</th></tr></thead>
+            <tbody>
+              <tr><td style={tdStyle}>Model</td><td style={tdStyle}>GPT-4o-mini</td></tr>
+              <tr><td style={tdStyle}>Temperature</td><td style={tdStyle}>0.7</td></tr>
+              <tr><td style={tdStyle}>Max tokens</td><td style={tdStyle}>600</td></tr>
+              <tr><td style={tdStyle}>Context window</td><td style={tdStyle}>Last 20 messages</td></tr>
+              <tr><td style={tdStyle}>Response format</td><td style={tdStyle}>Structured JSON (action + data + reply)</td></tr>
+            </tbody>
+          </table>
+
+          <h3 style={h3Style}>Web Search (Tavily)</h3>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Parameter</th><th style={thStyle}>Value</th></tr></thead>
+            <tbody>
+              <tr><td style={tdStyle}>Search depth</td><td style={tdStyle}>Basic</td></tr>
+              <tr><td style={tdStyle}>Max results</td><td style={tdStyle}>3 per query</td></tr>
+              <tr><td style={tdStyle}>Rate limiting</td><td style={tdStyle}>8 rotating API keys</td></tr>
+              <tr><td style={tdStyle}>Timeout</td><td style={tdStyle}>5 seconds per attempt</td></tr>
+              <tr><td style={tdStyle}>Trigger</td><td style={tdStyle}>Auto-detected via keyword patterns</td></tr>
+            </tbody>
+          </table>
+
+          <h3 style={h3Style}>Network Configuration</h3>
+          <div style={codeBlockStyle}>
+{`Network:    Robinhood Chain Testnet
+Chain ID:   46630 (0xb626)
+RPC:        https://rpc.testnet.chain.robinhood.com
+Explorer:   https://explorer.testnet.chain.robinhood.com
+Currency:   RBH (native gas token)
+Faucet:     https://faucet.testnet.chain.robinhood.com`}
+          </div>
+        </div>
+
+        {/* ─── SECURITY ─── */}
+        <div id="doc-security" style={sectionStyle}>
+          <h2 style={h2Style}>Security <span style={{fontFamily:'"IBM Plex Serif"', fontStyle:'italic', fontWeight:400, color:'var(--blue)', textTransform:'none'}}>Model</span></h2>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:0, border:'1px solid var(--ink)', marginBottom:20}}>
+            {[
+              { title:'Non-Custodial', desc:'Users maintain full control of their tokens at all times. The protocol never holds user funds outside of explicit vault deposits.' },
+              { title:'Immutable Contracts', desc:'No proxy patterns, no upgrade mechanisms. Once deployed, contract logic cannot be changed. What you audit is what runs forever.' },
+              { title:'Immutable Fees', desc:'Index fees are set at creation and cannot be modified. No bait-and-switch. Investors always know the exact cost.' },
+              { title:'Weight Validation', desc:'Solidity enforces weights sum to 10,000 bps, max 5 stocks, min 2 stocks, max 5% fee. Invalid indices cannot be deployed.' },
+            ].map((item, i) => <div key={i} style={{padding:'16px 14px', borderRight: i % 2 === 0 ? '1px solid var(--ink)' : 'none', borderBottom: i < 2 ? '1px solid var(--ink)' : 'none'}}>
+              <div style={{fontFamily:'var(--display)', fontSize:12, fontWeight:600, letterSpacing:'.12em', textTransform:'uppercase', marginBottom:8}}>{item.title}</div>
+              <p style={{fontFamily:'var(--sans)', fontSize:11, lineHeight:1.6, color:'var(--ink-soft)', margin:0}}>{item.desc}</p>
+            </div>)}
+          </div>
+        </div>
+
+        {/* ─── FAQ ─── */}
+        <div id="doc-faq" style={sectionStyle}>
+          <h2 style={h2Style}>Frequently Asked <span style={{fontFamily:'"IBM Plex Serif"', fontStyle:'italic', fontWeight:400, color:'var(--blue)', textTransform:'none'}}>Questions</span></h2>
+          {[
+            { q:'What are tokenized stocks?', a:'ERC-20 tokens on Robinhood Chain that represent real equities. On testnet, they are obtained from the official faucet (5 of each stock per 24 hours).' },
+            { q:'Is this real money?', a:'No. ATLAS runs on Robinhood Chain testnet. All tokens are testnet tokens with no real monetary value. The protocol is a proof of concept for the Arbitrum Buildathon.' },
+            { q:'How does the AI terminal execute trades?', a:'The AI agent (GPT-4o-mini) parses your natural language into a structured JSON with an action type and parameters. The frontend shows a confirmation dialog, and upon approval, executes the corresponding smart contract function via ethers.js and MetaMask.' },
+            { q:'Can I create an index with any stocks?', a:'Currently only 5 stocks are available on RH Chain testnet: TSLA, AMZN, NFLX, AMD, PLTR. As Robinhood adds more tokenized stocks, the protocol will support them automatically.' },
+            { q:'What happens when I sell an index token?', a:'The AtlasVault burns your index token and returns the proportional underlying stocks back to the vault, making them available for future buyers. It is a full 1:1 redemption.' },
+            { q:'How are LP fees distributed?', a:'When an index is minted, 50% of the fee (in index tokens) is sent to the vault address. This accumulates as vault holdings that benefit all LPs proportionally.' },
+            { q:'Can the index creator change fees after deployment?', a:'No. Fees are immutable — hardcoded in the smart contract at deployment. This protects investors from fee manipulation.' },
+          ].map((item, i) => <div key={i} style={{borderBottom:'1px solid var(--rule)', padding:'16px 0'}}>
+            <div style={{fontFamily:'var(--display)', fontSize:14, fontWeight:600, letterSpacing:'.06em', marginBottom:6}}>{item.q}</div>
+            <p style={{fontFamily:'var(--sans)', fontSize:13, lineHeight:1.6, color:'var(--ink-soft)', margin:0}}>{item.a}</p>
+          </div>)}
+        </div>
+
+        {/* Footer */}
+        <div style={{textAlign:'center', padding:'32px 0 48px', borderTop:'2px solid var(--ink)'}}>
+          <div style={{fontFamily:'var(--display)', fontSize:14, fontWeight:600, letterSpacing:'.2em', textTransform:'uppercase', marginBottom:8}}>ATLAS Protocol</div>
+          <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-mute)', letterSpacing:'.14em'}}>Robinhood Chain &middot; Arbitrum Orbit L2 &middot; Buildathon 2026</div>
+          <div style={{fontFamily:'var(--display)', color:'var(--blue)', letterSpacing:'.4em', marginTop:12}}>&#10022; &nbsp; &#10022; &nbsp; &#10022;</div>
+        </div>
+
+      </div>
+    </div>
+  </>;
+}
+
 // ─── RAIL ───
 function RightRail({ setView }) {
   return <aside className="rail">
@@ -2233,7 +2813,7 @@ function RightRail({ setView }) {
 
 // ─── APP ───
 function App() {
-  const validViews = ['overview','indices','stocks','terminal','portfolio','treasury','create'];
+  const validViews = ['overview','indices','stocks','terminal','portfolio','treasury','create','liquidity','docs'];
   const hashView = window.location.hash.replace('#','');
   const [view, setView] = useState(validViews.includes(hashView) ? hashView : 'overview');
   const { wallet, balances, loading: walletLoading, connect: connectW, refresh: refreshBalances } = useWallet();
@@ -2241,6 +2821,14 @@ function App() {
   // Force re-render when prices update
   const [, forceUpdate] = useState(0);
   useEffect(() => { if (lastUpdate) forceUpdate(n => n + 1); }, [lastUpdate]);
+
+  // Load indices on startup without wallet (public RPC)
+  useEffect(() => {
+    if (DEPLOYED_INDICES.length === 0 && !wallet) {
+      const pub = new ethers.JsonRpcProvider('https://rpc.testnet.chain.robinhood.com');
+      loadDeployedIndices(pub).then(() => forceUpdate(n => n + 1));
+    }
+  }, []);
 
   useEffect(() => {
     function onHash(){ const v = window.location.hash.replace('#',''); if(validViews.includes(v)) setView(v); }
@@ -2262,6 +2850,7 @@ function App() {
       { key:'treasury', num:'VI.', label:'Treasury' },
       { key:'create', num:'VII.', label:'Create Index' },
       { key:'liquidity', num:'VIII.', label:'Provide Liquidity' },
+      { key:'docs', num:'IX.', label:'Documentation' },
     ]},
   ];
 
@@ -2313,12 +2902,13 @@ function App() {
     <main>
       {view === 'overview' && <OverviewView setView={setView} wallet={wallet} balances={balances} connectW={connectW} walletLoading={walletLoading} refreshBalances={refreshBalances}/>}
       {view === 'indices' && <IndicesView setView={setView} wallet={wallet} balances={balances} refreshBalances={refreshBalances}/>}
-      {view === 'stocks' && <StocksView wallet={wallet} balances={balances} refreshBalances={refreshBalances}/>}
+      {view === 'stocks' && <StocksView wallet={wallet} balances={balances} refreshBalances={refreshBalances} connectW={connectW} walletLoading={walletLoading}/>}
       {view === 'terminal' && <TerminalView wallet={wallet} balances={balances} refreshBalances={refreshBalances} connectW={connectW} walletLoading={walletLoading}/>}
       {view === 'portfolio' && <PortfolioView wallet={wallet} balances={balances} connectW={connectW} walletLoading={walletLoading}/>}
       {view === 'treasury' && <TreasuryView/>}
       {view === 'create' && <CreateIndexView setView={setView} wallet={wallet}/>}
       {view === 'liquidity' && <LiquidityView wallet={wallet} balances={balances} refreshBalances={refreshBalances}/>}
+      {view === 'docs' && <DocsView setView={setView}/>}
     </main>
 
     {showRail && <RightRail setView={setView}/>}

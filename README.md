@@ -18,6 +18,7 @@ Built for the **Arbitrum Open House London Buildathon** (May 25 – June 14, 202
 - [Smart Contracts](#smart-contracts)
 - [Protocol Flow](#protocol-flow)
 - [Fee Model](#fee-model)
+- [AI Trading Terminal](#ai-trading-terminal)
 - [Tech Stack](#tech-stack)
 - [Deployed Contracts](#deployed-contracts)
 - [Stock Tokens](#stock-tokens)
@@ -335,6 +336,96 @@ Every time someone buys (mints) an index token, a fee is charged and split autom
 - User receives: **9.9 index tokens**
 - Creator receives: **0.05 index tokens** (50% of 0.1 fee)
 - Vault (LPs) receives: **0.05 index tokens** (50% of 0.1 fee)
+
+---
+
+## AI Trading Terminal
+
+The ATLAS Terminal is a **natural language trading interface** powered by GPT-4o-mini. Instead of navigating forms and dropdowns, users type what they want in plain English (or Spanish) and the AI agent translates intent into on-chain transactions.
+
+### How It Works
+
+```
+User Input → GPT-4o-mini → Structured JSON → Confirmation UI → On-Chain Transaction
+
+┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌─────────────┐
+│  User types  │────▶│  AI Agent    │────▶│  Confirm UI  │────▶│  Blockchain │
+│  "buy 2      │     │  parses      │     │  shows tx    │     │  executes   │
+│   ATLAS"     │     │  intent →    │     │  details,    │     │  buyIndex() │
+│              │     │  JSON action │     │  user clicks │     │  via vault  │
+└─────────────┘     └──────────────┘     │  ✓ Confirm   │     └─────────────┘
+                                          └──────────────┘
+```
+
+### AI Agent Architecture
+
+The AI agent uses a **dynamic system prompt** regenerated on every request, ensuring the agent always has current data:
+
+| Component | Details |
+|-----------|---------|
+| **Model** | GPT-4o-mini (temperature 0.7, max 600 tokens) |
+| **Dynamic Context** | Current stock prices, all deployed indices + supply, user wallet balances, available stocks |
+| **Response Format** | Structured JSON: `{ reply, action, data }` |
+| **Fallback Parser** | Regex-based intent detection when AI doesn't set action field |
+| **Context Window** | Last 20 messages maintained for multi-turn conversations |
+
+### Terminal Capabilities
+
+| Command (Natural Language) | Action | On-Chain? |
+|---------------------------|--------|-----------|
+| "buy 2 ATLAS" | Purchases 2 ATLAS index tokens via AtlasVault | **Yes** — `buyIndex()` |
+| "sell 1 ATLAS" | Redeems 1 ATLAS, receives underlying stocks | **Yes** — `sellIndex()` |
+| "send 5 TSLA to 0x..." | Transfers 5 TSLA tokens to address | **Yes** — `transfer()` |
+| "create index with TSLA and AMZN" | Guides through index creation flow | **Yes** — `createIndex()` |
+| "show my portfolio" | Displays wallet balances for all tokens | Read-only |
+| "price of TSLA?" | Shows live price from Yahoo Finance | Read-only |
+| "latest news about Arbitrum" | Real-time web search via Tavily API | Off-chain |
+
+### Multilingual Support
+
+The terminal detects the user's language and responds accordingly:
+
+```
+English: "buy 2 ATLAS"    → action: buy, ticker: ATLAS, qty: 2
+Spanish: "compra 2 ATLAS" → action: buy, ticker: ATLAS, qty: 2
+English: "sell 1 ATLAS"   → action: sell, ticker: ATLAS, qty: 1
+Spanish: "vende 1 ATLAS"  → action: sell, ticker: ATLAS, qty: 1
+```
+
+### Web Search Integration (Tavily)
+
+The terminal has **real-time web search** capability:
+
+1. Detects search intent via keyword patterns ("news", "latest", "what is", "who", etc.)
+2. Calls Tavily API with the user's query (8 rotating keys for rate limiting)
+3. Injects search results into the AI's system prompt
+4. AI incorporates real data + URLs into the response
+
+This means the terminal can answer questions about **any topic** — not just trading. Users can ask about news, events, tutorials, crypto, and more.
+
+### Wallet Integration
+
+- If a user tries to execute a trade without a connected wallet, MetaMask connection is automatically prompted
+- A "Connect Wallet" banner appears at the top of the terminal when no wallet is detected
+- The system prompt dynamically includes the user's current balances so the AI can reference them
+
+### Response Pipeline
+
+```
+1. User sends message
+2. System checks if message needs web search (Tavily)
+3. Dynamic system prompt generated with:
+   - Current stock prices (live from Yahoo Finance)
+   - All deployed on-chain indices + supply
+   - User's wallet balances
+   - Web search results (if applicable)
+4. GPT-4o-mini generates structured JSON response
+5. Regex fallback parser runs if AI didn't set action field
+6. buildConfirmation() maps action to confirmation UI
+7. User clicks ✓ Confirm
+8. handleConfirm() executes on-chain transaction via ethers.js
+9. Balances refresh automatically after transaction
+```
 
 ---
 

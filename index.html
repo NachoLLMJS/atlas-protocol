@@ -496,9 +496,9 @@
         index.
       </h1>
       <p class="hero-lede">
-        Create custom baskets of tokenized US stocks on Robinhood Chain.
-        Buy an index in <em>one transaction</em>, earn fees when others follow your strategy.
-        Fully trustless &middot; <em>no admin keys, no rug risk</em>.
+        Institutional-grade tokenized stock indices on Robinhood Chain.
+        Create diversified portfolios in <em>one transaction</em>, with transparent on-chain fee distribution.
+        Fully non-custodial &middot; <em>verifiable, auditable, composable</em>.
       </p>
       <div class="hero-cta">
         <a href="ATLAS.html" class="btn primary">&#10095; Launch App</a>
@@ -509,26 +509,24 @@
 
     <div class="hero-stats">
       <div class="hero-stat">
-        <div class="k">// TVL</div>
-        <div class="v"><span data-count="847">0</span>K<span class="unit">USDC</span></div>
-        <div class="delta">&#9650; +18.2% (7d)</div>
-        <div class="spark"><svg width="56" height="20" viewBox="0 0 56 20"><path d="M0 16 L10 12 L18 14 L26 8 L36 10 L46 4 L56 6"/><circle cx="56" cy="6" r="2"/></svg></div>
+        <div class="k">// Vault TVL</div>
+        <div class="v" id="stat-tvl"><span>--</span><span class="unit">stocks</span></div>
+        <div class="delta" id="stat-tvl-detail">Loading from chain...</div>
       </div>
       <div class="hero-stat">
-        <div class="k">// Index</div>
-        <div class="v"><span data-count="12">0</span><span class="unit">live</span></div>
-        <div class="delta">3 new this week</div>
+        <div class="k">// Indices</div>
+        <div class="v" id="stat-indices"><span>--</span><span class="unit">deployed</span></div>
+        <div class="delta" id="stat-indices-detail">Loading...</div>
       </div>
       <div class="hero-stat">
-        <div class="k">// Stocks</div>
+        <div class="k">// Stocks Available</div>
         <div class="v"><span data-count="5">0</span><span class="unit">live</span></div>
         <div class="delta">TSLA, AMZN, NFLX, AMD, PLTR</div>
       </div>
       <div class="hero-stat">
-        <div class="k">// Volume 24h</div>
-        <div class="v"><span data-count="126">0</span>K<span class="unit">USDC</span></div>
-        <div class="delta">&#9650; +34.7%</div>
-        <div class="spark"><svg width="56" height="20" viewBox="0 0 56 20"><path d="M0 14 L10 16 L18 10 L26 12 L36 6 L46 8 L56 4"/><circle cx="56" cy="4" r="2"/></svg></div>
+        <div class="k">// Fee Model</div>
+        <div class="v" style="font-size:24px;">50 / 50</div>
+        <div class="delta">Creator / LP split on-chain</div>
       </div>
     </div>
   </div>
@@ -555,7 +553,7 @@
       <div class="body">
         <div class="verb">bundle stocks into an index</div>
         <h3>Create</h3>
-        <p>Select up to 4 tokenized stocks, set weights and creator fees. Your index deploys as an ERC-20 token on Robinhood Chain.</p>
+        <p>Select tokenized stocks, set weights and management fees. Your index deploys as an ERC-20 token on Robinhood Chain, fully backed by underlying assets.</p>
         <div class="read"><span>// trustless &middot; no admin keys</span><span>&rarr;</span></div>
       </div>
     </a>
@@ -571,8 +569,8 @@
       <div class="body">
         <div class="verb">one transaction, full exposure</div>
         <h3>Buy</h3>
-        <p>Buy any index in a single transaction. The vault automatically acquires the underlying stocks and mints your index token. Fully backed 1:1.</p>
-        <div class="read"><span>// gasless via ZeroDev</span><span>&rarr;</span></div>
+        <p>Acquire any index in a single transaction through the AtlasVault. The vault transfers underlying stocks and mints your index token. Always backed 1:1.</p>
+        <div class="read"><span>// one-click via AtlasVault</span><span>&rarr;</span></div>
       </div>
     </a>
     <a class="tri-card reveal reveal-delay-3" href="ATLAS.html#portfolio">
@@ -585,9 +583,9 @@
         </svg>
       </div>
       <div class="body">
-        <div class="verb">creator fees on every mint</div>
+        <div class="verb">fee distribution on every trade</div>
         <h3>Earn</h3>
-        <p>Set your fee when creating an index. Every time someone buys or redeems your index, you earn automatically. Withdraw anytime.</p>
+        <p>Fees are split 50/50 between index creators and liquidity providers. Transparent on-chain distribution on every buy and sell. No manual claims needed.</p>
         <div class="read"><span>// immutable fees &middot; on-chain</span><span>&rarr;</span></div>
       </div>
     </a>
@@ -630,14 +628,14 @@
       <span class="num">Step I</span>
       <svg viewBox="0 0 36 36"><circle class="glyph-line" cx="18" cy="14" r="7"/><path class="glyph-line" d="M7 32c0-6 5-11 11-11s11 5 11 11"/></svg>
       <h4>Connect</h4>
-      <p>Wallet or social login via ZeroDev. Gasless transactions. No seed phrase needed.</p>
+      <p>Connect your wallet to Robinhood Chain (Arbitrum Orbit L2). Get test tokens from the official faucet.</p>
       <div class="step-arrow"></div>
     </div>
     <div class="step reveal reveal-delay-2">
       <span class="num">Step II</span>
       <svg viewBox="0 0 36 36"><rect class="glyph-line" x="5" y="10" width="26" height="16"/><path class="glyph-line" d="M5 14h26M22 20h6"/></svg>
-      <h4>Buy Stocks</h4>
-      <p>Purchase tokenized stocks with USDC. Tokens go straight to your wallet.</p>
+      <h4>Get Stocks</h4>
+      <p>Claim tokenized stocks from the RH Chain faucet or provide liquidity to the AtlasVault.</p>
       <div class="step-arrow"></div>
     </div>
     <div class="step reveal reveal-delay-3">
@@ -650,15 +648,15 @@
     <div class="step reveal reveal-delay-4">
       <span class="num">Step IV</span>
       <svg viewBox="0 0 36 36"><path class="glyph-line" d="M10 6h16v24H10z"/><path class="glyph-line" d="M14 14h8M14 18h5"/></svg>
-      <h4>Others Buy</h4>
-      <p>Users buy your index in one click. Vault mints tokens backed by real stocks.</p>
+      <h4>Others Invest</h4>
+      <p>Investors acquire your index in one transaction. The AtlasVault mints tokens backed 1:1 by real tokenized stocks.</p>
       <div class="step-arrow"></div>
     </div>
     <div class="step reveal reveal-delay-4">
       <span class="num">Step V</span>
       <svg viewBox="0 0 36 36"><circle class="glyph-line" cx="18" cy="18" r="11"/><path class="glyph-line" d="M18 7v4M18 25v4M7 18h4M25 18h4"/></svg>
       <h4>Earn Fees</h4>
-      <p>Creator fees collected automatically. Withdraw to your wallet anytime.</p>
+      <p>Fees split 50/50: creators and LPs earn on every buy/sell. Fully on-chain, transparent distribution.</p>
     </div>
   </div>
 </section>
@@ -675,7 +673,7 @@
     <div class="term-left">
       <div class="kick">// AI-Powered</div>
       <h3>Trade with<br/><span class="it">natural language.</span></h3>
-      <p>No forms, no dropdowns. Just tell the ATLAS agent what you want. Buy stocks, create an index, check your portfolio &middot; all through conversation.</p>
+      <p>Interact with the protocol via natural language. Buy indices, manage your portfolio, check balances &middot; the AI agent handles the on-chain execution.</p>
       <a href="ATLAS.html#terminal" class="btn primary">&#10095; Open Terminal</a>
     </div>
     <div class="term-right" id="termPreview">
@@ -697,10 +695,7 @@
   <div class="partners reveal">
     <span class="partner">Robinhood Chain</span>
     <span class="partner">Arbitrum</span>
-    <span class="partner">ZeroDev</span>
-    <span class="partner">Alchemy</span>
-    <span class="partner">OpenZeppelin</span>
-    <span class="partner">Dune</span>
+    <span class="partner">Solidity</span>
   </div>
 </section>
 
@@ -708,7 +703,7 @@
 <section class="cta-band">
   <div class="reveal">
     <h2>Build your<br/><span class="it">index.</span></h2>
-    <p>Create a tokenized stock index in minutes. No code required. Just pick your stocks, set your fees, and deploy on Robinhood Chain.</p>
+    <p>Deploy a tokenized stock index on Robinhood Chain. Select your stocks, define weights, set management fees. Institutional-grade infrastructure, accessible to everyone.</p>
     <div class="btns">
       <a href="ATLAS.html" class="btn primary" style="padding:16px 28px; font-size:12px;">&#10095; Launch App</a>
       <a href="ATLAS.html#terminal" class="btn" style="padding:16px 28px; font-size:12px;">Open Terminal</a>
@@ -723,7 +718,7 @@
     <div>
       <h4>Atlas Protocol</h4>
       <p style="font-family:var(--sans); font-size:13px; color:var(--ink-soft); line-height:1.6; max-width:340px;">
-        Trustless tokenized stock index protocol on Robinhood Chain. Built for the Arbitrum Open House London Buildathon.
+        Non-custodial tokenized stock index protocol on Robinhood Chain. Built for the Arbitrum Open House London Buildathon 2026.
       </p>
       <div class="live-chip" style="margin-top:18px;">
         <span class="live-dot"></span> Testnet Live
@@ -752,8 +747,8 @@
       <div class="links">
         <a href="https://arbitrum.io" target="_blank" rel="noopener">Arbitrum</a>
         <a href="https://robinhood.com" target="_blank" rel="noopener">Robinhood Chain</a>
-        <a href="https://zerodev.app" target="_blank" rel="noopener">ZeroDev</a>
-        <a href="https://alchemy.com" target="_blank" rel="noopener">Alchemy</a>
+        <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://vercel.com" target="_blank" rel="noopener">Vercel</a>
       </div>
     </div>
   </div>
@@ -833,18 +828,17 @@
   // ─── TERMINAL TYPING ANIMATION ───
   const termBody = document.getElementById('termBody');
   const termLines = [
-    { type:'cmd', text:'buy $500 of TSLA' },
-    { type:'rsp', text:'Executing: Buy 2.67 TSLA at $187.34' },
-    { type:'ok',  text:'\u2713 Order filled. 2.67 TSLA added to portfolio.' },
+    { type:'cmd', text:'buy 1 ATLAS index' },
+    { type:'rsp', text:'Buying 1 ATLAS via AtlasVault...' },
+    { type:'rsp', text:'Transferring TSLA, AMZN, NFLX, AMD, PLTR from vault' },
+    { type:'ok',  text:'\u2713 Purchased 1 $ATLAS. Stocks deposited to index.' },
     { type:'br' },
-    { type:'cmd', text:'create index "AI Leaders" with NVDA MSFT GOOG META' },
-    { type:'rsp', text:'Deploying ERC-20 on Robinhood Chain...' },
-    { type:'rsp', text:'Composition: NVDA 25% | MSFT 25% | GOOG 25% | META 25%' },
-    { type:'ok',  text:'\u2713 Index IDX-003 deployed. Token: $AILD' },
+    { type:'cmd', text:'show my portfolio' },
+    { type:'rsp', text:'$ATLAS: 1.0 | TSLA: 3.0 | AMZN: 2.0 | PLTR: 5.0' },
     { type:'br' },
-    { type:'cmd', text:'portfolio' },
-    { type:'rsp', text:'Total: $12,847.20 USDC (+2.7% today)' },
-    { type:'rsp', text:'TSLA 12.40 | $TECH 8.00 | NVDA 2.50 | AAPL 15.00' },
+    { type:'cmd', text:'sell 1 ATLAS' },
+    { type:'rsp', text:'Redeeming 1 $ATLAS for underlying stocks...' },
+    { type:'ok',  text:'\u2713 Redeemed. Received 1 of each: TSLA, AMZN, NFLX, AMD, PLTR' },
   ];
 
   let termStarted = false;
@@ -938,6 +932,87 @@
       }
     });
   });
+})();
+</script>
+
+<!-- On-chain data -->
+<script>
+(async function(){
+  const RPC = 'https://rpc.testnet.chain.robinhood.com';
+  const FACTORY = '0xE0136684FaA29801885e1faF619bc5C8894CA35D';
+  const VAULT = '0x3130865dE0D1594E38C5cC52596712F05d93a4d5';
+  const STOCKS = {
+    TSLA: '0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E',
+    AMZN: '0x5884aD2f920c162CFBbACc88C9C51AA75eC09E02',
+    NFLX: '0x3b8262A63d25f0477c4DDE23F83cfe22Cb768C93',
+    AMD:  '0x71178BAc73cBeb415514eB542a8995b82669778d',
+    PLTR: '0x1FBE1a0e43594b3455993B5dE5Fd0A7A266298d0'
+  };
+
+  // Raw JSON-RPC call helper (no ethers dependency needed)
+  async function rpcCall(method, params) {
+    const res = await fetch(RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error.message);
+    return json.result;
+  }
+
+  // eth_call helper
+  async function ethCall(to, data) {
+    return rpcCall('eth_call', [{ to, data }, 'latest']);
+  }
+
+  // Function selectors
+  const TOTAL_INDICES_SIG = '0x8037fac5'; // totalIndices()
+  const BALANCE_OF_SIG = '0x70a08231'; // balanceOf(address)
+  const vaultPadded = VAULT.slice(2).toLowerCase().padStart(64, '0');
+
+  try {
+    // Fetch indices count and all vault balances in parallel
+    const stockKeys = Object.keys(STOCKS);
+    const promises = [
+      ethCall(FACTORY, TOTAL_INDICES_SIG),
+      ...stockKeys.map(s => ethCall(STOCKS[s], BALANCE_OF_SIG + vaultPadded))
+    ];
+
+    const results = await Promise.all(promises);
+    const totalIdx = parseInt(results[0], 16);
+
+    // Update indices count
+    document.getElementById('stat-indices').innerHTML =
+      '<span>' + totalIdx + '</span><span class="unit">deployed</span>';
+    document.getElementById('stat-indices-detail').textContent =
+      'On-chain via IndexFactory';
+
+    // Calculate total vault TVL
+    let totalWei = 0n;
+    const details = [];
+    stockKeys.forEach((s, i) => {
+      const bal = BigInt(results[i + 1]);
+      totalWei += bal;
+      const formatted = Number(bal) / 1e18;
+      if (formatted > 0) details.push(s + ': ' + formatted.toFixed(1));
+    });
+
+    const tvlFormatted = (Number(totalWei) / 1e18).toFixed(1);
+    document.getElementById('stat-tvl').innerHTML =
+      '<span>' + tvlFormatted + '</span><span class="unit">tokens</span>';
+    document.getElementById('stat-tvl-detail').textContent =
+      details.length > 0 ? details.join(' | ') : 'No deposits yet';
+
+  } catch(e) {
+    console.warn('Failed to fetch on-chain data:', e);
+    document.getElementById('stat-tvl').innerHTML =
+      '<span>--</span><span class="unit">offline</span>';
+    document.getElementById('stat-indices').innerHTML =
+      '<span>--</span><span class="unit">offline</span>';
+    document.getElementById('stat-tvl-detail').textContent = 'RPC unavailable';
+    document.getElementById('stat-indices-detail').textContent = 'RPC unavailable';
+  }
 })();
 </script>
 
